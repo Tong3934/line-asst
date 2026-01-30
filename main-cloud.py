@@ -637,10 +637,6 @@ async def health_check():
 
 
 # ==================== Main ====================
-# if __name__ == "__main__":
-#     import uvicorn
-
-#     port = int(os.getenv("PORT", 8000))
 if __name__ == "__main__":
     import uvicorn
     import os
@@ -653,17 +649,54 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ API Key มีปัญหา: {e}")
 
+    # ตรวจจับว่าทำงานใน GitHub Codespaces หรือไม่
+    codespace_name = os.getenv("CODESPACE_NAME")
+    github_codespaces_port_forwarding_domain = os.getenv("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
+    
     print("\n" + "=" * 70)
-    print("🚀 LINE Insurance Claim Bot with Cloudflare Tunnel")
-    print("=" * 70)
-    print(f"📍 Local Server: http://localhost:{port}")
-    print(f"🔗 Local Webhook: http://localhost:{port}/webhook")
-    print(f"❤️  Health Check: http://localhost:{port}/health")
-    print("=" * 70)
-    print("\n⚠️  สำคัญ! ต้องรัน Cloudflare Tunnel แยกต่างหาก:")
-    print(f"   Terminal อื่น: ./start_cloudflare.sh")
-    print(f"   หรือ: cloudflared tunnel --url http://localhost:{port}")
-    print("=" * 70 + "\n")
+    
+    if codespace_name and github_codespaces_port_forwarding_domain:
+        # ทำงานใน GitHub Codespaces
+        public_url = f"https://{codespace_name}-{port}.{github_codespaces_port_forwarding_domain}"
+        webhook_url = f"{public_url}/webhook"
+        
+        print("🎉 GitHub Codespaces - LINE Insurance Claim Bot")
+        print("=" * 70)
+        print(f"📍 Local Server: http://localhost:{port}")
+        print(f"🌐 Public URL: {public_url}")
+        print(f"🔗 Webhook URL: {webhook_url}")
+        print(f"❤️  Health Check: {public_url}/health")
+        print("=" * 70)
+        print("\n📋 ขั้นตอนการตั้งค่า LINE Webhook:")
+        print("   1. ไปที่: https://developers.line.biz/console/")
+        print("   2. เลือก Channel ของคุณ")
+        print("   3. ไปที่: Messaging API > Webhook settings")
+        print(f"   4. วาง URL: {webhook_url}")
+        print("   5. กด 'Update' และ 'Verify' → ต้องได้ ✅ Success")
+        print("   6. เปิด 'Use webhook' = ON")
+        print("=" * 70)
+        print("\n⚠️  หมายเหตุสำคัญ:")
+        print("   • ใน Codespaces Ports tab ตรวจสอบว่า Port Visibility = 'Public'")
+        print("   • ถ้า Port เป็น 'Private' ให้คลิกขวาที่ Port > Port Visibility > Public")
+        print("   • Webhook URL จะใช้งานได้ทันทีหลัง Server เริ่มทำงาน")
+        print("=" * 70 + "\n")
+    else:
+        # ทำงานแบบ Local หรือ Cloud อื่นๆ
+        print("🚀 LINE Insurance Claim Bot (Local/Cloud Mode)")
+        print("=" * 70)
+        print(f"📍 Local Server: http://localhost:{port}")
+        print(f"🔗 Local Webhook: http://localhost:{port}/webhook")
+        print(f"❤️  Health Check: http://localhost:{port}/health")
+        print("=" * 70)
+        print("\n⚠️  สำคัญ! ต้องใช้ Tunnel Service เพื่อเชื่อมต่อกับ LINE:")
+        print("\n   🔸 ตัวเลือกที่ 1: Cloudflare Tunnel")
+        print(f"      Terminal อื่น: ./start_cloudflare.sh")
+        print(f"      หรือ: cloudflared tunnel --url http://localhost:{port}")
+        print("\n   🔸 ตัวเลือกที่ 2: ngrok")
+        print(f"      Terminal อื่น: ngrok http {port}")
+        print("\n   🔸 ตัวเลือกที่ 3: GitHub Codespaces (แนะนำ)")
+        print("      เปิดโปรเจกต์ใน GitHub Codespaces จะได้ Public URL อัตโนมัติ")
+        print("=" * 70 + "\n")
 
     # รัน uvicorn server
     uvicorn.run(app, host="0.0.0.0", port=port)
