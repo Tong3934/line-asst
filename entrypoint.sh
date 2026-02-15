@@ -1,6 +1,7 @@
 #!/bin/sh
 set -e
 
+# 📥 clone repo ครั้งแรก
 if [ ! -d "/app/.git" ]; then
   echo "📥 First time clone..."
   git clone -b ${BRANCH} ${REPO_URL} /app
@@ -13,5 +14,13 @@ else
   git pull
 fi
 
-echo "🚀 Starting bot..."
-exec python /app/main.py
+cd /app
+
+echo "🚀 Starting ngrok..."
+python start_ngrok.py &
+
+# รอ tunnel ขึ้นก่อน
+sleep 3
+
+echo "🚀 Starting FastAPI..."
+exec python main.py
