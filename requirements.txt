@@ -1,9 +1,21 @@
 fastapi
 uvicorn[standard]
 line-bot-sdk
-python-multipart
+python-dotenv
 pydantic
+python-multipart
+httpx
+Pillow
+google-generativeai
 pyngrok
 nest_asyncio
-python-dotenv
 
+google-generativeai 
+fastapi 
+uvicorn[standard] 
+line-bot-sdk 
+python-dotenv 
+Pillow 
+httpx 
+pyngrok 
+nest-asyncio
