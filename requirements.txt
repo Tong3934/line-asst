@@ -7,15 +7,5 @@ python-multipart
 httpx
 Pillow
 google-generativeai
-pyngrok
 nest_asyncio
-
-google-generativeai 
-fastapi 
-uvicorn[standard] 
-line-bot-sdk 
-python-dotenv 
-Pillow 
-httpx 
-pyngrok 
-nest-asyncio
+#pyngrok

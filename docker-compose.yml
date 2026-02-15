@@ -19,6 +19,8 @@ services:
     command: http line-bot:8000
     env_file:
       - .env
+    ports:
+      - "4040:4040"   # 👈 เพิ่มอันนี้เพื่อดู Public URL
     depends_on:
       - line-bot
     restart: always
