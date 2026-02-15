@@ -65,14 +65,14 @@ def get_policy_info(name: str, plate: str) -> Optional[Dict]:
     """
     จำลองการดึงข้อมูลกรมธรรม์จากฐานข้อมูล (Mock Data)
     รองรับการค้นหาทั้งแบบมีคำนำหน้าและไม่มีคำนำหน้า
-    
+
     Args:
         name: ชื่อ-นามสกุลของผู้เอาประกัน (อาจมีหรือไม่มีคำนำหน้า)
         plate: เลขทะเบียนรถ
-        
+
     Returns:
         Dict ข้อมูลกรมธรรม์ หรือ None ถ้าไม่พบ
-    
+
     Example:
         >>> policy = get_policy_info("สมชาย เข็มกลัด", "1กข1234")  # ไม่มีคำนำหน้า
         >>> policy = get_policy_info("นายสมชาย เข็มกลัด", "1กข1234")  # มีคำนำหน้า
@@ -82,36 +82,36 @@ def get_policy_info(name: str, plate: str) -> Optional[Dict]:
     # ลองค้นหาด้วย key ปกติก่อน (รองรับข้อมูลเก่า)
     search_key = f"{name}_{plate}"
     result = MOCK_POLICIES.get(search_key)
-    
+
     if result:
         return result
-    
+
     # ถ้าหาไม่เจอ ลองค้นหาโดยใช้ first_name + last_name
     for policy in MOCK_POLICIES.values():
         # สร้างชื่อเต็มจาก first_name และ last_name (ไม่รวมคำนำหน้า)
         full_name = f"{policy['first_name'].strip()} {policy['last_name']}"
-        
+
         # เปรียบเทียบชื่อและทะเบียนรถ
         if full_name == name and policy['plate'] == plate:
             return policy
-        
+
         # ลองเปรียบเทียบแบบมีคำนำหน้าด้วย (กรณีผู้ใช้ส่งมา)
         full_name_with_title = f"{policy['title_name']}{policy['first_name'].strip()} {policy['last_name']}"
         if full_name_with_title == name and policy['plate'] == plate:
             return policy
-    
+
     return None
 
 
 def add_policy(name: str, plate: str, policy_data: Dict) -> bool:
     """
     เพิ่มข้อมูลกรมธรรม์ใหม่ (สำหรับการทดสอบ)
-    
+
     Args:
         name: ชื่อ-นามสกุลของผู้เอาประกัน
         plate: เลขทะเบียนรถ
         policy_data: ข้อมูลกรมธรรม์
-        
+
     Returns:
         True ถ้าเพิ่มสำเร็จ, False ถ้ามีข้อมูลอยู่แล้ว
     """
@@ -119,7 +119,7 @@ def add_policy(name: str, plate: str, policy_data: Dict) -> bool:
     existing = get_policy_info(name, plate)
     if existing:
         return False
-    
+
     # สร้าง key สำหรับเพิ่มข้อมูล
     search_key = f"{name}_{plate}"
     MOCK_POLICIES[search_key] = policy_data
@@ -129,7 +129,7 @@ def add_policy(name: str, plate: str, policy_data: Dict) -> bool:
 def get_all_policies() -> Dict:
     """
     ดึงข้อมูลกรมธรรม์ทั้งหมด
-    
+
     Returns:
         Dict ของกรมธรรม์ทั้งหมด
     """
@@ -139,10 +139,10 @@ def get_all_policies() -> Dict:
 def search_policies_by_name(name: str) -> list:
     """
     ค้นหากรมธรรม์จากชื่อ (รองรับการค้นหาบางส่วน)
-    
+
     Args:
         name: ชื่อหรือบางส่วนของชื่อ
-        
+
     Returns:
         List ของกรมธรรม์ที่ตรงกับชื่อ
     """
@@ -151,9 +151,9 @@ def search_policies_by_name(name: str) -> list:
         # สร้างชื่อเต็มจาก first_name และ last_name
         full_name = f"{policy['first_name'].strip()} {policy['last_name']}"
         full_name_with_title = f"{policy['title_name']}{policy['first_name'].strip()} {policy['last_name']}"
-        
+
         # ค้นหาทั้ง first_name, last_name และ full_name
-        if (name.lower() in policy['first_name'].lower() or 
+        if (name.lower() in policy['first_name'].lower() or
             name.lower() in policy['last_name'].lower() or
             name.lower() in full_name.lower() or
             name.lower() in full_name_with_title.lower()):
@@ -164,10 +164,10 @@ def search_policies_by_name(name: str) -> list:
 def search_policies_by_plate(plate: str) -> Optional[Dict]:
     """
     ค้นหากรมธรรม์จากทะเบียนรถ
-    
+
     Args:
         plate: เลขทะเบียนรถ
-        
+
     Returns:
         Dict ข้อมูลกรมธรรม์ หรือ None ถ้าไม่พบ
     """

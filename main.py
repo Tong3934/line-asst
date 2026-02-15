@@ -10,8 +10,6 @@ import base64
 import tempfile
 import time
 import re
-from pyngrok import ngrok
-import asyncio
 from typing import Dict, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
@@ -46,20 +44,17 @@ from mock_data import get_policy_info
 # Import Flex Messages
 from flex_messages import create_request_info_flex, create_policy_info_flex, create_analysis_result_flex
 
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
-
 # โหลด environment variables
 load_dotenv()
 
-# ดึงค่าจาก .env
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+# 2. ดึงค่าจาก os.environ มาใส่ตัวแปร
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN') #
+LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET') #
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY') #
 
-# ตรวจสอบค่า
+# 3. ตรวจสอบค่า
 if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, GEMINI_API_KEY]):
-    raise ValueError("❌ กรุณาตั้งค่า Environment Variables ในไฟล์ .env ให้ครบถ้วน")
+    raise ValueError("กรุณาตั้งค่า Environment Variables ให้ครบถ้วน")
 
 # ตั้งค่า LINE Bot
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
@@ -88,7 +83,7 @@ def extract_phone_from_response(text: str) -> Optional[str]:
     - โทร 02-123-4567
     - เบอร์: 098-765-4321
     - โทรศัพท์: 1234567890
-    
+
     Returns:
         เบอร์โทรที่เอา - และช่องว่างออก หรือ None ถ้าไม่พบ
     """
@@ -100,20 +95,20 @@ def extract_phone_from_response(text: str) -> Optional[str]:
         r'แจ้งเหตุ[:\s]*(\d{4})',                 # แจ้งเหตุ 1557
         r'(?:โทร|เบอร์)\s*[:：]?\s*(\d{10})',     # โทร: 0987654321
     ]
-    
+
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
             phone = match.group(1).replace('-', '').replace(' ', '')
             return phone
-    
+
     return None
 
 
 # ==================== Gemini AI Analysis ====================
 def analyze_damage_with_gemini(
-    image_bytes: bytes, 
-    policy_info: Dict, 
+    image_bytes: bytes,
+    policy_info: Dict,
     additional_info: Optional[str] = None,
     has_counterpart: Optional[str] = None
 ) -> str:
@@ -132,52 +127,52 @@ def analyze_damage_with_gemini(
     try:
         # ตรวจสอบว่ามีเอกสารกรมธรรม์หรือไม่
         has_policy_document = policy_info.get('policy_document_base64') is not None
-        
+
         # สร้าง System Prompt ให้ AI อ่านเอกสารจริง
         if has_policy_document:
           system_prompt = f"""
           คุณคือ "AI ผู้เชี่ยวชาญด้านประกันรถยนต์และประเมินสินไหม" สำหรับบริการ "เช็คสิทธิ์เคลมด่วน"
-            วิเคราะห์ด้วยมาตรฐานระดับมืออาชีพ แม่นยำตามเงื่อนไขกรมธรรม์ และสื่อสารอย่างรวดเร็วเป็นกันเอง
+          วิเคราะห์ด้วยมาตรฐานระดับมืออาชีพ แม่นยำตามเงื่อนไขกรมธรรม์ และสื่อสารอย่างรวดเร็วเป็นกันเอง
 
-            **ภารกิจของคุณ:**
-            วิเคราะห์ภาพความเสียหาย (ภาพที่ 1) เปรียบเทียบกับเอกสารกรมธรรม์ (ภาพที่ 2/PDF) อย่างละเอียดและรวดเร็ว เพื่อให้คำแนะนำที่ถูกต้องที่สุดแก่ผู้เอาประกันภัย
+          **ภารกิจของคุณ:**
+          วิเคราะห์ภาพความเสียหาย (ภาพที่ 1) เปรียบเทียบกับเอกสารกรมธรรม์ (ภาพที่ 2/PDF) อย่างละเอียดและรวดเร็ว เพื่อให้คำแนะนำที่ถูกต้องที่สุดแก่ผู้เอาประกันภัย
 
           **ข้อมูลพื้นฐานลูกค้า:**
           - ผู้เอาประกัน: คุณ {policy_info['first_name'].strip()} {policy_info['last_name']}
           - รถยนต์: {policy_info['car_model']} ({policy_info['car_year']}) ทะเบียน {policy_info['plate']}
           - บริษัทประกัน: {policy_info['insurance_company']}"""
-          
+
           # เพิ่มข้อมูลสถานะคู่กรณีจากลูกค้า
           if has_counterpart:
               if has_counterpart == "มีคู่กรณี":
                   system_prompt += f"""
           - สถานะคู่กรณี: ✅ **มีคู่กรณี** (ลูกค้ายืนยัน)
-          
+
           ⚠️ **คำแนะนำสำหรับ AI:**
           - ลูกค้ายืนยันว่า "มีคู่กรณี"
           - ให้ตรวจสอบในรูปภาพว่ามีหลักฐานรถคู่กรณีหรือไม่
           - ถ้าในรูปไม่เห็นคู่กรณีชัดเจน → แนะนำให้ลูกค้าถ่ายรูปคู่กรณีเพิ่ม
           - ถ้ามีคู่กรณีจริง → ประกันชั้น 2+/2/3+/3 สามารถเคลมได้
           - ชั้น 1 → เคลมได้ทุกกรณี (ไม่ว่าจะมีคู่กรณีหรือไม่)"""
-              
+
               elif has_counterpart == "ไม่มีคู่กรณี":
                   system_prompt += f"""
           - สถานะคู่กรณี: ❌ **ไม่มีคู่กรณี** (ลูกค้ายืนยัน - ชนเสา/เฉี่ยวชนเอง)
-          
+
           ⚠️ **คำแนะนำสำหรับ AI:**
           - ลูกค้ายืนยันว่า "ไม่มีคู่กรณี" (ชนเสา, เฉี่ยวชนวัตถุ, ชนกำแพง)
           - ตรวจสอบประเภทประกันจากเอกสาร:
             • ชั้น 1 → ✅ เคลมได้ (ไม่ต้องมีคู่กรณี)
             • ชั้น 2+/2/3+/3 → ❌ เคลมไม่ได้ (ต้องมีคู่กรณีเป็นยานพาหนะ)
           - ถ้าเป็นชั้น 2+ → แจ้งชัดเจนว่า "ไม่มีสิทธิ์เคลม" พร้อมอ้างอิงเงื่อนไขจากเอกสาร"""
-          
+
           # เพิ่มรายละเอียดเพิ่มเติมจากลูกค้า (ถ้ามี)
           if additional_info:
               system_prompt += f"""
           - รายละเอียดจากลูกค้า: "{additional_info}"
-          
+
           ⚠️ **หมายเหตุ:** ใช้ข้อมูลนี้ประกอบการพิจารณา แต่ยึดรูปภาพและเอกสารกรมธรรม์เป็นหลัก"""
-          
+
           system_prompt += """
 
           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -232,40 +227,40 @@ def analyze_damage_with_gemini(
 
         # แปลงรูปภาพความเสียหายเป็น PIL Image
         from PIL import Image
-        
+
         damage_image = Image.open(io.BytesIO(image_bytes))
-        
+
         # แปลงเอกสารกรมธรรม์จาก Base64
         policy_doc_base64 = policy_info['policy_document_base64']
         policy_doc_bytes = base64.b64decode(policy_doc_base64)
-        
+
         print(f"📄 ส่งเอกสารกรมธรรม์ (PDF) และรูปภาพความเสียหายไปให้ AI วิเคราะห์")
-        
+
         # บันทึก PDF ลงไฟล์ชั่วคระว (Gemini ต้องการ file path สำหรับ PDF)
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
             temp_pdf.write(policy_doc_bytes)
             temp_pdf_path = temp_pdf.name
-        
+
         try:
             # อัพโหลด PDF ไปยัง Gemini
             uploaded_pdf = genai.upload_file(temp_pdf_path, mime_type="application/pdf")
             print(f"✅ อัพโหลด PDF สำเร็จ: {uploaded_pdf.name}")
-            
+
             # รอให้ Gemini ประมวลผลไฟล์เสร็จ
             time.sleep(2)
             print(f"⏳ รอ Gemini ประมวลผล PDF...")
-            
+
             # เรียกใช้ Gemini API - ส่งทั้งรูปภาพความเสียหายและเอกสารกรมธรรม์
             response = gemini_model.generate_content([
                 system_prompt,
                 damage_image,      # รูปที่ 1: ความเสียหาย
                 uploaded_pdf       # เอกสารกรมธรรม์ (PDF)
             ])
-            
+
             # ลบไฟล์ที่อัพโหลดออกจาก Gemini
             genai.delete_file(uploaded_pdf.name)
             print(f"🗑️ ลบไฟล์ PDF จาก Gemini แล้ว")
-            
+
         finally:
             # ลบไฟล์ชั่วคระ
             if os.path.exists(temp_pdf_path):
@@ -339,17 +334,17 @@ def handle_text_message(event):
                 # ส่งคำถามพร้อม Quick Reply Buttons (2 ปุ่ม: มีคู่กรณี / ไม่มีคู่กรณี)
                 quick_reply = QuickReply(items=[
                     QuickReplyItem(action=MessageAction(
-                        label="✅ มีคู่กรณี", 
+                        label="✅ มีคู่กรณี",
                         text="มีคู่กรณี"
                     )),
                     QuickReplyItem(action=MessageAction(
-                        label="❌ ไม่มีคู่กรณี", 
+                        label="❌ ไม่มีคู่กรณี",
                         text="ไม่มีคู่กรณี"
                     ))
                 ])
 
                 additional_text = f"\nรายละเอียด: {additional_info}" if additional_info else ""
-                
+
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
@@ -363,19 +358,19 @@ def handle_text_message(event):
 
             # Case 2.5: รับคำตอบเรื่องคู่กรณี
             if user_id in user_sessions and user_sessions[user_id].get("state") == "waiting_for_counterpart":
-                
+
                 # ตรวจสอบคำตอบ
                 if text in ["มีคู่กรณี", "ไม่มีคู่กรณี"]:
                     has_counterpart = text
-                    
+
                     # ดึงข้อมูลที่เก็บไว้จาก session
                     name = user_sessions[user_id]["name"]
                     plate = user_sessions[user_id]["plate"]
                     additional_info = user_sessions[user_id].get("additional_info")
-                    
+
                     # ค้นหาข้อมูลกรมธรรม์ (ตอนนี้ค่อยค้นหา!)
                     policy_info = get_policy_info(name, plate)
-                    
+
                     if not policy_info:
                         line_bot_api.reply_message(
                             ReplyMessageRequest(
@@ -388,7 +383,7 @@ def handle_text_message(event):
                         # รีเซ็ต state
                         user_sessions[user_id] = {"state": "waiting_for_info"}
                         return
-                    
+
                     # บันทึกข้อมูลครบถ้วนใน session
                     user_sessions[user_id] = {
                         "state": "waiting_for_image",
@@ -398,33 +393,33 @@ def handle_text_message(event):
                         "has_counterpart": has_counterpart,  # เก็บข้อมูลคู่กรณี
                         "policy_info": policy_info
                     }
-                    
+
                     # ส่ง Flex Message แสดงข้อมูลกรมธรรม์และขอรูปภาพ
                     flex_message = create_policy_info_flex(policy_info)
                     line_bot_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
                             messages=[FlexMessage(
-                                alt_text="พบข้อมูลกรมธรรม์ กรุณาส่งรูปภาพ", 
+                                alt_text="พบข้อมูลกรมธรรม์ กรุณาส่งรูปภาพ",
                                 contents=flex_message
                             )]
                         )
                     )
                     return
-                
+
                 else:
                     # คำตอบไม่ถูกต้อง
                     quick_reply = QuickReply(items=[
                         QuickReplyItem(action=MessageAction(
-                            label="✅ มีคู่กรณี", 
+                            label="✅ มีคู่กรณี",
                             text="มีคู่กรณี"
                         )),
                         QuickReplyItem(action=MessageAction(
-                            label="❌ ไม่มีคู่กรณี", 
+                            label="❌ ไม่มีคู่กรณี",
                             text="ไม่มีคู่กรณี"
                         ))
                     ])
-                    
+
                     line_bot_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
@@ -484,7 +479,7 @@ def handle_image_message(event):
             )
 
             print(f"🔍 เริ่มวิเคราะห์รูปภาพสำหรับ user: {user_id}")
-            
+
             # ดาวน์โหลดรูปภาพจาก LINE
             message_id = event.message.id
             image_url = f"https://api-data.line.me/v2/bot/message/{message_id}/content"
@@ -495,28 +490,28 @@ def handle_image_message(event):
                 response = client.get(image_url, headers=headers)
                 response.raise_for_status()
                 image_bytes = response.content
-            
+
             print(f"✅ ดาวน์โหลดรูปภาพสำเร็จ: {len(image_bytes)} bytes")
 
             # ดึงข้อมูลกรมธรรม์จาก session
             policy_info = user_sessions[user_id]["policy_info"]
             additional_info = user_sessions[user_id].get("additional_info")
             has_counterpart = user_sessions[user_id].get("has_counterpart")
-            
+
             print(f"📋 ข้อมูลกรมธรรม์: {policy_info['policy_number']}")
             print(f"📝 รายละเอียดเพิ่มเติม: {additional_info if additional_info else 'ไม่มี'}")
             print(f"👥 สถานะคู่กรณี: {has_counterpart if has_counterpart else 'ไม่ระบุ'}")
 
             # วิเคราะห์ด้วย Gemini AI (ส่งข้อมูลเพิ่มเติมและสถานะคู่กรณี)
             print(f"🤖 กำลังส่งไปยัง Gemini AI...")
-            
+
             analysis_result = analyze_damage_with_gemini(
-                image_bytes, 
-                policy_info, 
-                additional_info, 
+                image_bytes,
+                policy_info,
+                additional_info,
                 has_counterpart
             )
-            
+
             print(f"✅ Gemini AI ตอบกลับแล้ว")
             print(f"📝 ผลการวิเคราะห์: {analysis_result[:100]}...")
 
@@ -533,7 +528,7 @@ def handle_image_message(event):
                     insurance_company=policy_info.get('insurance_company', ''),
                     claim_status="unknown"  # สามารถปรับให้ AI ส่ง status มาได้
                 )
-                
+
                 line_bot_api.push_message(
                     PushMessageRequest(
                         to=user_id,
@@ -553,7 +548,7 @@ def handle_image_message(event):
                     )
                 )
                 print(f"✅ ส่งผลการวิเคราะห์แบบ Text (ไม่พบเบอร์โทร)")
-                
+
                 # ส่งข้อความปิดท้าย
                 line_bot_api.push_message(
                     PushMessageRequest(
@@ -577,7 +572,7 @@ def handle_image_message(event):
             print(f"❌ Error handling image message: {str(e)}")
             import traceback
             traceback.print_exc()
-            
+
             line_bot_api.push_message(
                 PushMessageRequest(
                     to=user_id,
@@ -655,68 +650,20 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ API Key มีปัญหา: {e}")
 
-    # 🆕 เริ่ม ngrok tunnel
-    try:
-        # ตั้งค่า ngrok authtoken (ถ้ามี - ไม่บังคับ)
-        ngrok_token = os.getenv("NGROK_AUTH_TOKEN")
-        if ngrok_token:
-            ngrok.set_auth_token(ngrok_token)
-            print("✅ ngrok authtoken ตั้งค่าเรียบร้อย")
-        else:
-            print("⚠️  ไม่พบ NGROK_AUTH_TOKEN (ใช้งาน Free tier)")
-        
-        # ปิด tunnel เก่า (ถ้ามี) เพื่อป้องกัน error
-        try:
-            ngrok.kill()
-            print("🔄 ปิด ngrok tunnel เก่า")
-        except:
-            pass
-        
-        # สร้าง ngrok tunnel ใหม่
-        print(f"⏳ กำลังสร้าง ngrok tunnel สำหรับ port {port}...")
-        ngrok_tunnel = ngrok.connect(port, bind_tls=True)
-        public_url = ngrok_tunnel.public_url
-        
-        # แสดง URL แบบเน้นๆ เหมือน Colab
-        print("\n" + "=" * 70)
-        print("🎉 ngrok Tunnel Created Successfully!")
-        print("=" * 70)
-        print(f"📍 Public URL: {public_url}")
-        print(f"🔗 Webhook URL (สำหรับ LINE): {public_url}/webhook")
-        print("=" * 70)
-        print("📋 คัดลอก URL นี้ไปใส่ใน LINE Developers Console:")
-        print(f"   👉 {public_url}/webhook")
-        print("=" * 70)
-        print("\n⚠️  ขั้นตอนต่อไป:")
-        print("   1. ไปที่: https://developers.line.biz/console/")
-        print("   2. เลือก Channel ของคุณ")
-        print("   3. ไปที่: Messaging API > Webhook settings")
-        print(f"   4. วาง URL: {public_url}/webhook")
-        print("   5. กด Verify → ต้องได้ ✅ Success")
-        print("   6. เปิด 'Use webhook' = ON")
-        print("=" * 70 + "\n")
-        
-    except Exception as e:
-        print("\n" + "=" * 70)
-        print("⚠️  ngrok Error!")
-        print("=" * 70)
-        print(f"❌ เกิดข้อผิดพลาด: {e}")
-        print("\n💡 วิธีแก้:")
-        print("   1. ตรวจสอบ internet connection")
-        print("   2. ใส่ NGROK_AUTH_TOKEN ใน .env")
-        print("   3. ลอง restart โปรแกรม")
-        print("   4. หรือใช้ ngrok CLI แยกต่างหาก: ngrok http 8000")
-        print("=" * 70)
-        print("💡 จะรันแบบ local only (ไม่มี public URL)\n")
-
-
     print("=" * 60)
     print("🚀 LINE Insurance Claim Bot Starting...")
     print("=" * 60)
-    print(f"📍 Local Server: http://localhost:{port}")
-    print(f"🔗 Local Webhook: http://localhost:{port}/webhook")
-    print(f"❤️  Health Check: http://localhost:{port}/health")
+    print(f"📍 Server: http://localhost:{port}")
+    print(f"🔗 Webhook: http://localhost:{port}/webhook")
+    print(f"❤️  Health: http://localhost:{port}/health")
     print("=" * 60)
 
-    # รัน uvicorn server
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+    # uvicorn.run(
+    #     "main:app",
+    #     host="0.0.0.0",
+    #     port=port,
+    #     reload=True,  # Auto-reload เมื่อมีการเปลี่ยนแปลง code (ปิดตอน production)
+    #     log_level="info"
+    # )

@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  line-bot:
+    image: python:3.11-slim
+    container_name: line-bot
+    working_dir: /app
+    volumes:
+      - ./entrypoint.sh:/entrypoint.sh
+    entrypoint: /entrypoint.sh
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - REPO_URL=https://github.com/your-username/your-repo.git
+      - BRANCH=main
+      - PORT=8000
+    restart: always

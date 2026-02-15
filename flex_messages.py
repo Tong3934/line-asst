@@ -10,7 +10,7 @@ from linebot.v3.messaging import FlexContainer
 def create_request_info_flex() -> FlexContainer:
     """
     สร้าง Flex Message สำหรับขอข้อมูลชื่อและทะเบียนรถ
-    
+
     Returns:
         FlexContainer: Flex Message พร้อมส่งผ่าน LINE API
     """
@@ -130,14 +130,14 @@ def create_request_info_flex() -> FlexContainer:
             "paddingAll": "15px"
         }
     }
-    
+
     return FlexContainer.from_dict(flex_message)
 
 
 def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
     """
     สร้าง Flex Message แสดงข้อมูลกรมธรรม์
-    
+
     Args:
         policy_info: Dict ข้อมูลกรมธรรม์ที่มี keys:
             - policy_number: เลขกรมธรรม์
@@ -147,13 +147,13 @@ def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
             - car_model: รุ่นรถ
             - car_year: ปีรถ
             - insurance_type: ประเภทประกัน
-    
+
     Returns:
         FlexContainer: Flex Message พร้อมส่งผ่าน LINE API
     """
     # รวมชื่อ-นามสกุล (ไม่รวมคำนำหน้า)
     full_name = f"{policy_info['first_name'].strip()} {policy_info['last_name']}"
-    
+
     flex_message = {
         "type": "bubble",
         "hero": {
@@ -312,17 +312,17 @@ def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
             "paddingAll": "20px"
         }
     }
-    
+
     return FlexContainer.from_dict(flex_message)
 
 
 def create_error_flex(error_message: str) -> FlexContainer:
     """
     สร้าง Flex Message สำหรับแสดง Error
-    
+
     Args:
         error_message: ข้อความ error ที่ต้องการแสดง
-    
+
     Returns:
         FlexContainer: Flex Message พร้อมส่งผ่าน LINE API
     """
@@ -372,14 +372,14 @@ def create_error_flex(error_message: str) -> FlexContainer:
             "paddingAll": "15px"
         }
     }
-    
+
     return FlexContainer.from_dict(flex_message)
 
 
 def create_welcome_flex() -> FlexContainer:
     """
     สร้าง Flex Message สำหรับต้อนรับ
-    
+
     Returns:
         FlexContainer: Flex Message พร้อมส่งผ่าน LINE API
     """
@@ -464,25 +464,25 @@ def create_welcome_flex() -> FlexContainer:
             "paddingAll": "15px"
         }
     }
-    
+
     return FlexContainer.from_dict(flex_message)
 
 
 def create_analysis_result_flex(
-    summary_text: str, 
+    summary_text: str,
     phone_number: str = None,
     insurance_company: str = "",
     claim_status: str = "unknown"
 ) -> FlexContainer:
     """
     สร้าง Flex Message แสดงผลการวิเคราะห์พร้อมปุ่มโทรออก
-    
+
     Args:
         summary_text: ข้อความผลการวิเคราะห์จาก AI
         phone_number: เบอร์โทรแจ้งเหตุ (ไม่ต้องมี - หรือช่องว่าง)
         insurance_company: ชื่อบริษัทประกัน
         claim_status: สถานะการเคลม (approved/rejected/conditional/unknown)
-        
+
     Returns:
         FlexContainer: Flex Message พร้อมส่งผ่าน LINE API
     """
@@ -493,12 +493,12 @@ def create_analysis_result_flex(
         "conditional": "#F5A524",   # ส้ม - เคลมได้แต่มีเงื่อนไข
         "unknown": "#0066FF"        # น้ำเงิน - ไม่ทราบสถานะ
     }
-    
+
     button_color = button_colors.get(claim_status, "#0066FF")
-    
+
     # สร้าง footer contents
     footer_contents = []
-    
+
     # ถ้ามีเบอร์โทร → เพิ่มปุ่มโทรออก
     if phone_number:
         footer_contents.append({
@@ -512,7 +512,7 @@ def create_analysis_result_flex(
                 "uri": f"tel:{phone_number}"
             }
         })
-    
+
     # เพิ่มปุ่ม "เช็ครถคันอื่น"
     footer_contents.append({
         "type": "button",
@@ -524,7 +524,7 @@ def create_analysis_result_flex(
             "text": "เช็คสิทธิ์เคลมด่วน"
         }
     })
-    
+
     flex_message = {
         "type": "bubble",
         "size": "mega",
@@ -563,5 +563,5 @@ def create_analysis_result_flex(
             "paddingAll": "15px"
         }
     }
-    
+
     return FlexContainer.from_dict(flex_message)
