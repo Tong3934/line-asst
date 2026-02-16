@@ -2,8 +2,7 @@ name: Deploy to GCP VM
 
 on:
   push:
-    branches:
-      - gcp
+    branches: [ gcp ]
 
 jobs:
   deploy:
@@ -18,6 +17,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ~/line-asst
+            git fetch origin
+            git checkout gcp
             git pull origin gcp
             docker-compose down
             docker-compose up -d --build
