@@ -18,6 +18,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ~/line-asst
-            git pull origin main
+            git pull origin gcp
             docker-compose down
             docker-compose up -d --build
