@@ -371,6 +371,69 @@ def analyze_damage_with_gemini(
         return f"❌ {error_msg}\n\nกรุณาลองใหม่อีกครั้ง หรือติดต่อเจ้าหน้าที่"
 
 
+def start_claim_analysis(line_bot_api, user_id, image_bytes, policy_info, additional_info, has_counterpart):
+    """
+    เริ่มต้นการวิเคราะห์การเคลม และส่งผลลัพธ์กลับไปยังผู้ใช้
+    """
+    try:
+        # แจ้งว่ากำลังประมวลผล (ใช้ Push เพราะ Reply Token อาจหมดอายุหรือถูกใช้ไปแล้ว)
+        line_bot_api.push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=[TextMessage(text="⏳ กำลังวิเคราะห์ข้อมูล...\n\nกรุณารอสักครู่ค่ะ (ประมาณ 10-30 วินาที)")]
+            )
+        )
+
+        analysis_result = analyze_damage_with_gemini(
+            image_bytes,
+            policy_info,
+            additional_info,
+            has_counterpart
+        )
+
+        print(f"✅ Gemini AI ตอบกลับแล้ว สำหรับ user: {user_id}")
+        
+        # ดึงเบอร์โทรจากข้อความ AI
+        phone_number = extract_phone_from_response(analysis_result)
+        
+        # ส่งผลการวิเคราะห์กลับไปยังผู้ใช้พร้อมปุ่มโทรออก
+        if phone_number:
+            flex_message = create_analysis_result_flex(
+                summary_text=analysis_result,
+                phone_number=phone_number,
+                insurance_company=policy_info.get('insurance_company', ''),
+                claim_status="unknown"
+            )
+            line_bot_api.push_message(
+                PushMessageRequest(
+                    to=user_id,
+                    messages=[FlexMessage(alt_text="ผลการวิเคราะห์เคลมประกัน", contents=flex_message)]
+                )
+            )
+        else:
+            line_bot_api.push_message(
+                PushMessageRequest(
+                    to=user_id,
+                    messages=[
+                        TextMessage(text=analysis_result),
+                        TextMessage(text='✅ การวิเคราะห์เสร็จสมบูรณ์\n\nหากต้องการตรวจสอบรถคันอื่น กรุณาส่ง "เช็คสิทธิ์เคลมด่วน" อีกครั้งค่ะ')
+                    ]
+                )
+            )
+
+        # รีเซ็ต session หลังจากเสร็จสิ้น
+        user_sessions[user_id] = {"state": "completed"}
+
+    except Exception as e:
+        print(f"❌ Error in start_claim_analysis: {str(e)}")
+        line_bot_api.push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=[TextMessage(text=f"❌ เกิดข้อผิดพลาดในการวิเคราะห์: {str(e)}")]
+            )
+        )
+
+
 # ==================== LINE Bot Handlers ====================
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event):
@@ -458,23 +521,46 @@ def handle_text_message(event):
                         )
                         return
 
-            # Case 2.2: รับเหตุการณ์
+            # Case 2.2: รับเหตุการณ์ (Step สุดท้ายก่อนวิเคราะห์)
             if user_id in user_sessions and user_sessions[user_id].get("state") == "waiting_for_additional_info":
                 if text.strip() != "ข้าม":
-                    user_sessions[user_id]["additional_info"] = text
+                    additional_info = text
                 else:
-                    user_sessions[user_id]["additional_info"] = None
+                    additional_info = None
                 
-                user_sessions[user_id]["state"] = "waiting_for_image"
-                
+                # ดึงข้อมูลที่เก็บไว้ใน session
+                session = user_sessions[user_id]
+                image_bytes = session.get("temp_image_bytes")
+                policy_info = session.get("policy_info")
+                has_counterpart = session.get("has_counterpart")
+
+                if not image_bytes:
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="⚠️ ไม่พบรูปภาพความเสียหาย กรุณาส่งรูปภาพก่อนค่ะ")]
+                        )
+                    )
+                    user_sessions[user_id]["state"] = "waiting_for_image"
+                    return
+
+                # เริ่มวิเคราะห์
+                # ตอบรับว่าได้รับข้อมูลแล้ว
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[
-                            TextMessage(text="📸 ขั้นตอนสุดท้าย: กรุณาส่งรูปภาพความเสียหายของรถค่ะ"),
-                            TextMessage(text="เพื่อให้ AI วิเคราะห์และประเมินสิทธิ์การเคลมให้คุณทันที")
-                        ]
+                        messages=[TextMessage(text="👌 ระบบได้รับข้อมูลครบถ้วนแล้วค่ะ")]
                     )
+                )
+                
+                # เรียกใช้ฟังก์ชันวิเคราะห์
+                start_claim_analysis(
+                    line_bot_api, 
+                    user_id, 
+                    image_bytes, 
+                    policy_info, 
+                    additional_info, 
+                    has_counterpart
                 )
                 return
 
@@ -484,17 +570,15 @@ def handle_text_message(event):
                 # ตรวจสอบคำตอบ
                 if text in ["มีคู่กรณี", "ไม่มีคู่กรณี"]:
                     user_sessions[user_id]["has_counterpart"] = text
-                    user_sessions[user_id]["state"] = "waiting_for_additional_info"
+                    user_sessions[user_id]["state"] = "waiting_for_image"
 
-                    # ส่ง Flex Message ขอรายละเอียดเพิ่มเติม (Step 7)
-                    flex_additional = create_additional_info_prompt_flex()
                     line_bot_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
-                            messages=[FlexMessage(
-                                alt_text="กรุณาระบุรายละเอียดเพิ่มเติม",
-                                contents=flex_additional
-                            )]
+                            messages=[
+                                TextMessage(text="📸 ขั้นตอนต่อไป: กรุณาส่งรูปภาพความเสียหายของรถค่ะ"),
+                                TextMessage(text="เพื่อให้ AI เริ่มต้นการประเมินเบื้องต้น")
+                            ]
                         )
                     )
                     return
@@ -610,75 +694,25 @@ def handle_image_message(event):
                     )
                 return
 
-            # --- CASE 2: ส่งรูปความเสียหายเพื่อวิเคราะห์การเคลม (เดิม) ---
-            print(f"🔍 เริ่มวิเคราะห์รูปความเสียหายสำหรับ user: {user_id}")
+            # --- CASE 2: ดำเนินการเมื่อส่งรูปความเสียหาย ---
+            print(f"📸 ได้รับรูปความเสียหายจาก user: {user_id}")
+            
+            # เก็บรูปไว้ใน session 
+            user_sessions[user_id]["temp_image_bytes"] = image_bytes
+            user_sessions[user_id]["state"] = "waiting_for_additional_info"
 
-            # ดึงข้อมูลกรมธรรม์จาก session
-            policy_info = user_sessions[user_id]["policy_info"]
-            additional_info = user_sessions[user_id].get("additional_info")
-            has_counterpart = user_sessions[user_id].get("has_counterpart")
-
-            print(f"📋 ข้อมูลกรมธรรม์: {policy_info['policy_number']}")
-            print(f"📝 รายละเอียดเพิ่มเติม: {additional_info if additional_info else 'ไม่มี'}")
-            print(f"👥 สถานะคู่กรณี: {has_counterpart if has_counterpart else 'ไม่ระบุ'}")
-
-            # วิเคราะห์ด้วย Gemini AI (ส่งข้อมูลเพิ่มเติมและสถานะคู่กรณี)
-            print(f"🤖 กำลังส่งไปยัง Gemini AI...")
-
-            analysis_result = analyze_damage_with_gemini(
-                image_bytes,
-                policy_info,
-                additional_info,
-                has_counterpart
+            # ถามรายละเอียดเพิ่มเติม (Optional)
+            flex_additional = create_additional_info_prompt_flex()
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[FlexMessage(
+                        alt_text="กรุณาระบุรายละเอียดเพิ่มเติม",
+                        contents=flex_additional
+                    )]
+                )
             )
-
-            print(f"✅ Gemini AI ตอบกลับแล้ว")
-            print(f"📝 ผลการวิเคราะห์: {analysis_result[:100]}...")
-
-            # ดึงเบอร์โทรจากข้อความ AI
-            phone_number = extract_phone_from_response(analysis_result)
-            print(f"📞 เบอร์โทรที่ดึงได้: {phone_number if phone_number else 'ไม่พบ'}")
-
-            # ส่งผลการวิเคราะห์กลับไปยังผู้ใช้พร้อมปุ่มโทรออก
-            if phone_number:
-                # สร้าง Flex Message พร้อมปุ่มโทรออก
-                flex_message = create_analysis_result_flex(
-                    summary_text=analysis_result,
-                    phone_number=phone_number,
-                    insurance_company=policy_info.get('insurance_company', ''),
-                    claim_status="unknown"  # สามารถปรับให้ AI ส่ง status มาได้
-                )
-
-                line_bot_api.push_message(
-                    PushMessageRequest(
-                        to=user_id,
-                        messages=[FlexMessage(
-                            alt_text="ผลการวิเคราะห์เคลมประกัน",
-                            contents=flex_message
-                        )]
-                    )
-                )
-                print(f"✅ ส่งผลการวิเคราะห์พร้อมปุ่มโทร {phone_number}")
-            else:
-                # ถ้าไม่มีเบอร์โทร → ส่งเป็น Text ธรรมดา + ข้อความปิดท้าย
-                line_bot_api.push_message(
-                    PushMessageRequest(
-                        to=user_id,
-                        messages=[TextMessage(text=analysis_result)]
-                    )
-                )
-                print(f"✅ ส่งผลการวิเคราะห์แบบ Text (ไม่พบเบอร์โทร)")
-
-                # ส่งข้อความปิดท้าย
-                line_bot_api.push_message(
-                    PushMessageRequest(
-                        to=user_id,
-                        messages=[TextMessage(text='✅ การวิเคราะห์เสร็จสมบูรณ์\n\nหากต้องการตรวจสอบรถคันอื่น กรุณาส่ง "เช็คสิทธิ์เคลมด่วน" อีกครั้งค่ะ')]
-                    )
-                )
-
-            # รีเซ็ต session หลังจากเสร็จสิ้น
-            user_sessions[user_id] = {"state": "completed"}
+            return
 
         except httpx.HTTPStatusError as e:
             print(f"❌ Error downloading image: {str(e)}")
