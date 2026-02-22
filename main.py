@@ -42,7 +42,13 @@ import httpx
 from mock_data import search_policies_by_cid, search_policies_by_name, search_policies_by_plate
 
 # Import Flex Messages
-from flex_messages import create_request_info_flex, create_policy_info_flex, create_analysis_result_flex, create_vehicle_selection_flex
+from flex_messages import (
+    create_request_info_flex, 
+    create_policy_info_flex, 
+    create_analysis_result_flex, 
+    create_vehicle_selection_flex,
+    create_additional_info_prompt_flex
+)
 
 # โหลด environment variables
 load_dotenv()
@@ -130,14 +136,32 @@ def process_search_result(line_bot_api, event, user_id, policies, use_push=False
     else:
         policy_info = policies[0]
         user_sessions[user_id] = {
-            "state": "waiting_for_additional_info",
+            "state": "waiting_for_counterpart",
             "policy_info": policy_info
         }
-        msg = TextMessage(text="🚘 พบข้อมูลรถยนต์ของคุณแล้ว\n\n📝 กรุณาพิมพ์รายละเอียดเหตุการณ์เบื้องต้น (เช่น ชนท้าย, ประตูบุบ) หรือพิมพ์ 'ข้าม' หากไม่ต้องการระบุ")
+        
+        # แสดงรายละเอียดกรมธรรม์ (Step 5)
+        flex_policy = create_policy_info_flex(policy_info)
+        
+        # ถามเรื่องคู่กรณี (Step 6)
+        quick_reply = QuickReply(items=[
+            QuickReplyItem(action=MessageAction(label="✅ มีคู่กรณี", text="มีคู่กรณี")),
+            QuickReplyItem(action=MessageAction(label="❌ ไม่มีคู่กรณี", text="ไม่มีคู่กรณี"))
+        ])
+        msg_counterpart = TextMessage(
+            text="🚘 พบข้อมูลรถยนต์ของคุณแล้ว\n\n❓ **มีคู่กรณีหรือไม่?**\n\nกรุณาเลือก:",
+            quick_reply=quick_reply
+        )
+        
+        messages = [
+            FlexMessage(alt_text="พบข้อมูลกรมธรรม์", contents=flex_policy),
+            msg_counterpart
+        ]
+        
         if use_push:
-            line_bot_api.push_message(PushMessageRequest(to=user_id, messages=[msg]))
+            line_bot_api.push_message(PushMessageRequest(to=user_id, messages=messages))
         else:
-            line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token, messages=[msg]))
+            line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token, messages=messages))
         return True
 
 
@@ -399,13 +423,29 @@ def handle_text_message(event):
                     policy_info = next((p for p in policies if p["plate"] == plate), None)
                     if policy_info:
                         user_sessions[user_id] = {
-                            "state": "waiting_for_additional_info",
+                            "state": "waiting_for_counterpart",
                             "policy_info": policy_info
                         }
+                        
+                        # แสดงรายละเอียดกรมธรรม์ (Step 5)
+                        flex_policy = create_policy_info_flex(policy_info)
+                        
+                        # ถามเรื่องคู่กรณี (Step 6)
+                        quick_reply = QuickReply(items=[
+                            QuickReplyItem(action=MessageAction(label="✅ มีคู่กรณี", text="มีคู่กรณี")),
+                            QuickReplyItem(action=MessageAction(label="❌ ไม่มีคู่กรณี", text="ไม่มีคู่กรณี"))
+                        ])
+                        
                         line_bot_api.reply_message(
                             ReplyMessageRequest(
                                 reply_token=event.reply_token,
-                                messages=[TextMessage(text="� ระบบได้รับข้อมูลรถยนต์ของคุณแล้ว\n\n📝 กรุณาพิมพ์รายละเอียดเหตุการณ์เบื้องต้น (เช่น ชนท้าย, ประตูบุบ) หรือพิมพ์ 'ข้าม' หากไม่ต้องการระบุ")]
+                                messages=[
+                                    FlexMessage(alt_text="พบข้อมูลกรมธรรม์", contents=flex_policy),
+                                    TextMessage(
+                                        text="❓ **มีคู่กรณีหรือไม่?**\n\nกรุณาเลือก:",
+                                        quick_reply=quick_reply
+                                    )
+                                ]
                             )
                         )
                         return
@@ -425,56 +465,35 @@ def handle_text_message(event):
                 else:
                     user_sessions[user_id]["additional_info"] = None
                 
-                user_sessions[user_id]["state"] = "waiting_for_counterpart"
+                user_sessions[user_id]["state"] = "waiting_for_image"
                 
-                quick_reply = QuickReply(items=[
-                    QuickReplyItem(action=MessageAction(
-                        label="✅ มีคู่กรณี",
-                        text="มีคู่กรณี"
-                    )),
-                    QuickReplyItem(action=MessageAction(
-                        label="❌ ไม่มีคู่กรณี",
-                        text="ไม่มีคู่กรณี"
-                    ))
-                ])
-
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(
-                            text="❓ **มีคู่กรณีหรือไม่?**\n\nกรุณาเลือก:",
-                            quick_reply=quick_reply
-                        )]
+                        messages=[
+                            TextMessage(text="📸 ขั้นตอนสุดท้าย: กรุณาส่งรูปภาพความเสียหายของรถค่ะ"),
+                            TextMessage(text="เพื่อให้ AI วิเคราะห์และประเมินสิทธิ์การเคลมให้คุณทันที")
+                        ]
                     )
                 )
                 return
 
-            # Case 2.5: รับคำตอบเรื่องคู่กรณี
+            # Case 2.5: รับคำตอบเรื่องคู่กรณี (Step 6 -> 7)
             if user_id in user_sessions and user_sessions[user_id].get("state") == "waiting_for_counterpart":
 
                 # ตรวจสอบคำตอบ
                 if text in ["มีคู่กรณี", "ไม่มีคู่กรณี"]:
-                    has_counterpart = text
+                    user_sessions[user_id]["has_counterpart"] = text
+                    user_sessions[user_id]["state"] = "waiting_for_additional_info"
 
-                    policy_info = user_sessions[user_id]["policy_info"]
-                    additional_info = user_sessions[user_id].get("additional_info")
-
-                    # บันทึกข้อมูลครบถ้วนใน session
-                    user_sessions[user_id] = {
-                        "state": "waiting_for_image",
-                        "additional_info": additional_info,
-                        "has_counterpart": has_counterpart,  # เก็บข้อมูลคู่กรณี
-                        "policy_info": policy_info
-                    }
-
-                    # ส่ง Flex Message แสดงข้อมูลกรมธรรม์และขอรูปภาพ
-                    flex_message = create_policy_info_flex(policy_info)
+                    # ส่ง Flex Message ขอรายละเอียดเพิ่มเติม (Step 7)
+                    flex_additional = create_additional_info_prompt_flex()
                     line_bot_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
                             messages=[FlexMessage(
-                                alt_text="พบข้อมูลกรมธรรม์ กรุณาส่งรูปภาพ",
-                                contents=flex_message
+                                alt_text="กรุณาระบุรายละเอียดเพิ่มเติม",
+                                contents=flex_additional
                             )]
                         )
                     )
@@ -547,10 +566,15 @@ def handle_image_message(event):
                 return
 
             # แจ้งว่ากำลังประมวลผล
+            if current_state == "waiting_for_info":
+                msg_text = "⏳ กำลังค้นหาข้อมูล...\n\nกรุณารอสักครู่ค่ะ"
+            else:
+                msg_text = "⏳ กำลังวิเคราะห์รูปภาพ...\n\nกรุณารอสักครู่ค่ะ (ประมาณ 10-30 วินาที)"
+
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text="⏳ กำลังวิเคราะห์รูปภาพ...\n\nกรุณารอสักครู่ค่ะ (ประมาณ 10-30 วินาที)")]
+                    messages=[TextMessage(text=msg_text)]
                 )
             )
 

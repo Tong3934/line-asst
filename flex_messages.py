@@ -112,32 +112,6 @@ def create_request_info_flex() -> FlexContainer:
             "layout": "vertical",
             "contents": [
                 {
-                    "type": "box",
-                    "layout": "vertical",
-                    "contents": [
-                        {
-                            "type": "text",
-                            "text": "💡 รายละเอียดเพิ่มเติม (optional):",
-                            "size": "xs",
-                            "color": "#0066FF",
-                            "weight": "bold",
-                            "wrap": True
-                        },
-                        {
-                            "type": "text",
-                            "text": "เช่น: ชนท้าย, ประตูบุบ, กระจกแตก",
-                            "size": "xs",
-                            "color": "#666666",
-                            "margin": "xs",
-                            "wrap": True
-                        }
-                    ],
-                    "backgroundColor": "#F0F7FF",
-                    "cornerRadius": "md",
-                    "paddingAll": "10px",
-                    "margin": "none"
-                },
-                {
                     "type": "text",
                     "text": "❓ หากไม่ทราบทะเบียนรถ กรุณาติดต่อเจ้าหน้าที่",
                     "size": "xs",
@@ -430,26 +404,6 @@ def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
                     ],
                     "margin": "md"
                 },
-                {
-                    "type": "separator",
-                    "margin": "xl"
-                },
-                {
-                    "type": "text",
-                    "text": "📸 กรุณาส่งรูปภาพความเสียหายของรถ",
-                    "size": "md",
-                    "color": "#FF6B00",
-                    "weight": "bold",
-                    "margin": "xl",
-                    "wrap": True
-                },
-                {
-                    "type": "text",
-                    "text": "เพื่อให้ AI วิเคราะห์และประเมินสิทธิ์การเคลม",
-                    "size": "xs",
-                    "color": "#999999",
-                    "margin": "sm",
-                    "wrap": True
                 }
             ],
             "spacing": "sm",
@@ -903,3 +857,61 @@ def create_vehicle_selection_flex(policies: list) -> FlexContainer:
     }
 
     return FlexContainer.from_dict(flex_message)
+
+
+def create_additional_info_prompt_flex() -> FlexContainer:
+    """
+    สร้าง Flex Message สำหรับขอข้อมูลเพิ่มเติม (Optional)
+    """
+    flex_message = {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "📝 รายละเอียดเพิ่มเติม (Optional)",
+                    "weight": "bold",
+                    "size": "md",
+                    "color": "#0066FF"
+                },
+                {
+                    "type": "text",
+                    "text": "กรุณาพิมพ์รายละเอียดเหตุการณ์เบื้องต้น\nเช่น: ชนท้าย, ประตูบุบ, กระจกแตก",
+                    "size": "sm",
+                    "color": "#666666",
+                    "wrap": True,
+                    "margin": "md"
+                },
+                {
+                    "type": "text",
+                    "text": "หรือพิมพ์ 'ข้าม' หากไม่ต้องการระบุ",
+                    "size": "xs",
+                    "color": "#999999",
+                    "margin": "md",
+                    "style": "italic"
+                }
+            ],
+            "paddingAll": "20px"
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "message",
+                        "label": "ข้าม",
+                        "text": "ข้าม"
+                    },
+                    "style": "secondary",
+                    "height": "sm"
+                }
+            ],
+            "paddingAll": "10px"
+        }
+    }
+    return FlexContainer.from_dict(flex_message)
+
