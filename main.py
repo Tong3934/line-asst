@@ -39,7 +39,7 @@ import google.generativeai as genai
 import httpx
 
 # Import Mock Data
-from mock_data import search_policies_by_cid, search_policies_by_name, search_policies_by_plate
+from mock_data import search_policies_by_cid, search_policies_by_name, search_policies_by_plate, search_policies_by_phone
 
 # Import Flex Messages
 from flex_messages import (
@@ -393,8 +393,8 @@ def start_claim_analysis(line_bot_api, user_id, image_bytes, policy_info, additi
 
         print(f"✅ Gemini AI ตอบกลับแล้ว สำหรับ user: {user_id}")
         
-        # ดึงเบอร์โทรจากข้อความ AI
-        phone_number = extract_phone_from_response(analysis_result)
+        # ดึงเบอร์โทรจากข้อความ AI หรือใช้จากกรมธรรม์ถ้าไม่พบ
+        phone_number = extract_phone_from_response(analysis_result) or policy_info.get('phone')
         
         # ส่งผลการวิเคราะห์กลับไปยังผู้ใช้พร้อมปุ่มโทรออก
         if phone_number:
@@ -462,17 +462,22 @@ def handle_text_message(event):
                 )
                 return
 
-            # Case 2: รับข้อมูลชื่อ ทะเบียนรถ หรือ เลขบัตรประชาชน
+            # Case 2: รับข้อมูลชื่อ ทะเบียนรถ เลขบัตรประชาชน หรือเบอร์โทรศัพท์
             if user_id in user_sessions and user_sessions[user_id].get("state") == "waiting_for_info":
                 text_clean = text.replace('-', '').replace(' ', '')
                 
+                # ตรวจสอบว่าเป็นเลข 13 หลัก (CID) หรือ 10 หลัก (เบอร์โทร)
                 if re.match(r'^\d{13}$', text_clean):
                     policies = search_policies_by_cid(text_clean)
+                elif re.match(r'^\d{9,10}$', text_clean):
+                    policies = search_policies_by_phone(text_clean)
                 else:
+                    # ลองหาจากทะเบียนรถก่อน
                     policy = search_policies_by_plate(text)
                     if policy:
                         policies = [policy]
                     else:
+                        # สุดท้ายหาจากชื่อ
                         policies = search_policies_by_name(text)
 
                 process_search_result(line_bot_api, event, user_id, policies)
@@ -480,8 +485,8 @@ def handle_text_message(event):
 
             # Case 2.1: เลือกรถ
             if user_id in user_sessions and user_sessions[user_id].get("state") == "waiting_for_vehicle_selection":
-                if text.startswith("เลือกทะเบียน "):
-                    plate = text.replace("เลือกทะเบียน ", "")
+                if text.startswith("เลือกรถ:"):
+                    plate = text.replace("เลือกรถ:", "")
                     policies = user_sessions[user_id].get("search_results", [])
                     policy_info = next((p for p in policies if p["plate"] == plate), None)
                     if policy_info:
