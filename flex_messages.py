@@ -864,32 +864,49 @@ def create_additional_info_prompt_flex() -> FlexContainer:
     """
     flex_message = {
         "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "📝 ข้อมูลเพิ่มเติม",
+                    "weight": "bold",
+                    "color": "#FFFFFF",
+                    "size": "md"
+                }
+            ],
+            "backgroundColor": "#0066FF",
+            "paddingAll": "15px"
+        },
         "body": {
             "type": "box",
             "layout": "vertical",
             "contents": [
                 {
                     "type": "text",
-                    "text": "📝 รายละเอียดเพิ่มเติม (Optional)",
-                    "weight": "bold",
-                    "size": "md",
-                    "color": "#0066FF"
-                },
-                {
-                    "type": "text",
-                    "text": "กรุณาพิมพ์รายละเอียดเหตุการณ์เบื้องต้น\nเช่น: ชนท้าย, ประตูบุบ, กระจกแตก",
+                    "text": "ได้รับรูปภาพเรียบร้อยค่ะ! เพื่อความแม่นยำ คุณสามารถระบุรายละเอียดเหตุการณ์เพิ่มเติมได้นะคะ",
                     "size": "sm",
-                    "color": "#666666",
-                    "wrap": True,
-                    "margin": "md"
+                    "color": "#333333",
+                    "wrap": True
                 },
                 {
-                    "type": "text",
-                    "text": "หรือพิมพ์ 'ข้าม' หากไม่ต้องการระบุ",
-                    "size": "xs",
-                    "color": "#999999",
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "ตัวอย่าง: ชนกำแพง, ประตูขวาเบียดเสา, ถอยชนกระถาง",
+                            "size": "xs",
+                            "color": "#666666",
+                            "style": "italic",
+                            "wrap": True
+                        }
+                    ],
                     "margin": "md",
-                    "style": "italic"
+                    "backgroundColor": "#F0F7FF",
+                    "paddingAll": "10px",
+                    "cornerRadius": "md"
                 }
             ],
             "paddingAll": "20px"
@@ -902,15 +919,25 @@ def create_additional_info_prompt_flex() -> FlexContainer:
                     "type": "button",
                     "action": {
                         "type": "message",
-                        "label": "ข้าม",
+                        "label": "ข้ามและดูผลวิเคราะห์ ➡️",
                         "text": "ข้าม"
                     },
-                    "style": "secondary",
+                    "style": "primary",
+                    "color": "#00A550",
                     "height": "sm"
+                },
+                {
+                    "type": "text",
+                    "text": "หรือพิมพ์ข้อมูลแล้วส่งได้เลยค่ะ",
+                    "size": "xs",
+                    "color": "#999999",
+                    "margin": "md",
+                    "align": "center"
                 }
             ],
-            "paddingAll": "10px"
+            "paddingAll": "15px"
         }
     }
     return FlexContainer.from_dict(flex_message)
+
 
