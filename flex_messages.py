@@ -403,7 +403,6 @@ def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
                         }
                     ],
                     "margin": "md"
-                },
                 }
             ],
             "spacing": "sm",
