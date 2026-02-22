@@ -780,7 +780,7 @@ def create_vehicle_selection_flex(policies: list) -> FlexContainer:
 
     for i, policy in enumerate(policies):
         # เอาทะเบียนขึ้นก่อนตามความต้องการ
-        car_label = f"🚗 {policy['plate']} - {policy['car_model']}"
+        car_label = f"{policy['plate']} - {policy['car_model']}"
         # ตัดข้อความให้ไม่เกิน 40 ตัวอักษร
         if len(car_label) > 40:
             car_label = car_label[:37] + "..."
@@ -792,7 +792,7 @@ def create_vehicle_selection_flex(policies: list) -> FlexContainer:
                 "label": car_label,
                 "text": f"เลือกรถ:{policy['plate']}"
             },
-            "style": "secondary",
+            "style": "primary",
             "margin": "md",
             "height": "sm",
             "color": "#0066FF"
