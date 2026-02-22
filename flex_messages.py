@@ -775,19 +775,13 @@ def create_input_method_flex() -> FlexContainer:
 def create_vehicle_selection_flex(policies: list) -> FlexContainer:
     """
     สร้าง Flex Message แสดงรายการรถหลายคันให้ผู้ใช้เลือก
-    (ใช้เมื่อค้นหาด้วยชื่อหรือบัตรประชาชนแล้วพบหลายกรมธรรม์)
-
-    Args:
-        policies: List ของ Dict ข้อมูลกรมธรรม์ที่พบ
-
-    Returns:
-        FlexContainer: Flex Message พร้อมส่งผ่าน LINE API
     """
     vehicle_buttons = []
 
     for i, policy in enumerate(policies):
-        car_label = f"{policy['car_model']} - {policy['plate']}"
-        # ตัดข้อความให้ไม่เกิน 40 ตัวอักษร (LINE label limit)
+        # เอาทะเบียนขึ้นก่อนตามความต้องการ
+        car_label = f"🚗 {policy['plate']} - {policy['car_model']}"
+        # ตัดข้อความให้ไม่เกิน 40 ตัวอักษร
         if len(car_label) > 40:
             car_label = car_label[:37] + "..."
 
@@ -798,44 +792,56 @@ def create_vehicle_selection_flex(policies: list) -> FlexContainer:
                 "label": car_label,
                 "text": f"เลือกรถ:{policy['plate']}"
             },
-            "style": "primary" if i == 0 else "secondary",
-            "margin": "sm",
-            "height": "sm"
+            "style": "secondary",
+            "margin": "md",
+            "height": "sm",
+            "color": "#0066FF"
         }
-        if i == 0:
-            btn["color"] = "#0066FF"
-
         vehicle_buttons.append(btn)
 
     flex_message = {
         "type": "bubble",
-        "hero": {
+        "header": {
             "type": "box",
             "layout": "vertical",
             "contents": [
                 {
                     "type": "text",
-                    "text": "🚗 พบรถหลายคัน",
+                    "text": "🗂️ ผลการค้นหารถของคุณ",
                     "weight": "bold",
-                    "size": "xl",
+                    "size": "lg",
                     "color": "#FFFFFF"
                 },
                 {
                     "type": "text",
-                    "text": f"พบ {len(policies)} รายการ กรุณาเลือกรถของท่าน",
-                    "size": "sm",
+                    "text": f"พบรถที่จดทะเบียนภายใต้ชื่อของคุณ {len(policies)} คัน",
+                    "size": "xs",
                     "color": "#DDEEFF",
-                    "margin": "sm"
+                    "margin": "xs"
                 }
             ],
-            "backgroundColor": "#FF6B00",
+            "backgroundColor": "#0066FF",
             "paddingAll": "20px"
         },
         "body": {
             "type": "box",
             "layout": "vertical",
-            "contents": vehicle_buttons,
-            "spacing": "sm",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "กรุณาเลือกรถคันที่ต้องการแจ้งเคลม:",
+                    "size": "sm",
+                    "color": "#666666",
+                    "margin": "none",
+                    "weight": "bold"
+                },
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": vehicle_buttons,
+                    "margin": "md"
+                }
+            ],
             "paddingAll": "20px"
         },
         "footer": {
@@ -844,10 +850,9 @@ def create_vehicle_selection_flex(policies: list) -> FlexContainer:
             "contents": [
                 {
                     "type": "text",
-                    "text": "💡 กดเลือกรถที่ต้องการเคลมประกัน",
-                    "size": "xs",
+                    "text": "💡 คลิกที่รถเพื่อดำเนินการต่อ",
+                    "size": "xxs",
                     "color": "#999999",
-                    "wrap": True,
                     "align": "center"
                 }
             ],
@@ -856,6 +861,7 @@ def create_vehicle_selection_flex(policies: list) -> FlexContainer:
     }
 
     return FlexContainer.from_dict(flex_message)
+
 
 
 def create_additional_info_prompt_flex() -> FlexContainer:
