@@ -6,7 +6,7 @@ Mock Data สำหรับข้อมูลกรมธรรม์ประ�
 เช่น PostgreSQL, MySQL, MongoDB, หรือ API ภายนอก
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 
 # ฐานข้อมูล Mock (ในระบบจริงจะเชื่อมต่อกับ Database)
@@ -16,6 +16,7 @@ MOCK_POLICIES = {
         "title_name": "นาย",
         "first_name": "สมชาย ",
         "last_name": "เข็มกลัด",
+        "cid": "7564985348794",
         "plate": "1กข1234",
         "car_model": "Toyota Camry 2.5 Hybrid",
         "car_year": "2023",
@@ -33,6 +34,7 @@ MOCK_POLICIES = {
         "title_name": "นางสมหญิง",
         "first_name": "สมหญิง ",
         "last_name": "ใจดี",
+        "cid": 9294258136443,
         "plate": "3กท5678",
         "car_model": "Honda Civic RS",
         "car_year": "2022",
@@ -48,6 +50,7 @@ MOCK_POLICIES = {
         "title_name": "นาย",
         "first_name": "วิชัย ",
         "last_name": "รักษ์ดี",
+        "cid": 2138846447587,
         "plate": "4กก9999",
         "car_model": "Mazda CX-5 2.5 Turbo",
         "car_year": "2024",
@@ -172,6 +175,25 @@ def search_policies_by_plate(plate: str) -> Optional[Dict]:
         Dict ข้อมูลกรมธรรม์ หรือ None ถ้าไม่พบ
     """
     for policy in MOCK_POLICIES.values():
-        if policy['plate'] == plate:
+        if policy['plate'] == plate.strip():
             return policy
     return None
+
+
+def search_policies_by_cid(cid: str) -> List[Dict]:
+    """
+    ค้นหากรมธรรม์จากเลขบัตรประชาชน (CID)
+
+    Args:
+        cid: เลขบัตรประชาชน 13 หลัก (string)
+
+    Returns:
+        List ของกรมธรรม์ที่ตรงกับ CID
+    """
+    results = []
+    cid_clean = cid.strip().replace("-", "").replace(" ", "")
+    for policy in MOCK_POLICIES.values():
+        policy_cid = str(policy.get('cid', '')).strip().replace("-", "").replace(" ", "")
+        if policy_cid == cid_clean:
+            results.append(policy)
+    return results

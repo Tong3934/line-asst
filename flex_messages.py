@@ -37,14 +37,15 @@ def create_request_info_flex() -> FlexContainer:
             "contents": [
                 {
                     "type": "text",
-                    "text": "กรุณาส่งข้อมูลในรูปแบบ:",
+                    "text": "กรุณาพิมพ์ส่งข้อมูลอย่างใดอย่างหนึ่งดังต่อไปนี้:",
                     "weight": "bold",
-                    "size": "md",
-                    "margin": "md"
+                    "size": "sm",
+                    "margin": "md",
+                    "wrap": True
                 },
                 {
                     "type": "text",
-                    "text": "ชื่อ-นามสกุล, ทะเบียนรถ, รายละเอียด",
+                    "text": "• เลขบัตรประจำตัวประชาชน",
                     "size": "sm",
                     "color": "#0066FF",
                     "margin": "md",
@@ -52,10 +53,19 @@ def create_request_info_flex() -> FlexContainer:
                 },
                 {
                     "type": "text",
-                    "text": "(รายละเอียดใส่หรือไม่ใส่ก็ได้)",
-                    "size": "xxs",
-                    "color": "#999999",
-                    "margin": "xs"
+                    "text": "• ทะเบียนรถ",
+                    "size": "sm",
+                    "color": "#0066FF",
+                    "margin": "md",
+                    "weight": "bold"
+                },
+                {
+                    "type": "text",
+                    "text": "• ชื่อและนามสกุล",
+                    "size": "sm",
+                    "color": "#0066FF",
+                    "margin": "md",
+                    "weight": "bold"
                 },
                 {
                     "type": "separator",
@@ -70,7 +80,7 @@ def create_request_info_flex() -> FlexContainer:
                 },
                 {
                     "type": "text",
-                    "text": "• สมชาย เข็มกลัด, 1กข1234",
+                    "text": "• 1100112233445",
                     "size": "sm",
                     "color": "#666666",
                     "margin": "sm",
@@ -78,7 +88,15 @@ def create_request_info_flex() -> FlexContainer:
                 },
                 {
                     "type": "text",
-                    "text": "• สมชาย เข็มกลัด, 1กข1234, ชนเสาหน้า",
+                    "text": "• 1กข1234",
+                    "size": "sm",
+                    "color": "#666666",
+                    "margin": "xs",
+                    "wrap": True
+                },
+                {
+                    "type": "text",
+                    "text": "• สมชาย เข็มกลัด",
                     "size": "sm",
                     "color": "#666666",
                     "margin": "xs",
@@ -133,6 +151,131 @@ def create_request_info_flex() -> FlexContainer:
 
     return FlexContainer.from_dict(flex_message)
 
+def create_vehicle_selection_flex(policies: list) -> FlexContainer:
+    """
+    สร้าง Flex Message สำหรับเลือกข้อมูลรถเมื่อพบหลายคัน
+    """
+    bubbles = []
+    
+    for i, policy in enumerate(policies):
+        full_name = f"{policy['first_name'].strip()} {policy['last_name']}"
+        bubble = {
+            "type": "bubble",
+            "hero": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"🚗 คันที่ {i+1}",
+                        "weight": "bold",
+                        "size": "xl",
+                        "color": "#FFFFFF"
+                    }
+                ],
+                "backgroundColor": "#0066FF",
+                "paddingAll": "20px"
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "box",
+                        "layout": "baseline",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "ทะเบียนรถ:",
+                                "size": "sm",
+                                "color": "#999999",
+                                "flex": 4
+                            },
+                            {
+                                "type": "text",
+                                "text": policy["plate"],
+                                "size": "sm",
+                                "color": "#333333",
+                                "weight": "bold",
+                                "flex": 6
+                            }
+                        ],
+                        "margin": "md"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "baseline",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "รุ่นรถ:",
+                                "size": "sm",
+                                "color": "#999999",
+                                "flex": 4
+                            },
+                            {
+                                "type": "text",
+                                "text": policy.get("car_model", "-"),
+                                "size": "sm",
+                                "color": "#333333",
+                                "flex": 6,
+                                "wrap": True
+                            }
+                        ],
+                        "margin": "md"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "baseline",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "ชื่อ-นามสกุล:",
+                                "size": "sm",
+                                "color": "#999999",
+                                "flex": 4
+                            },
+                            {
+                                "type": "text",
+                                "text": full_name,
+                                "size": "sm",
+                                "color": "#333333",
+                                "flex": 6,
+                                "wrap": True
+                            }
+                        ],
+                        "margin": "md"
+                    }
+                ],
+                "flex": 1,
+                "paddingAll": "20px"
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "button",
+                        "action": {
+                            "type": "message",
+                            "label": "เลือกรถคันนี้",
+                            "text": f"เลือกทะเบียน {policy['plate']}"
+                        },
+                        "style": "primary",
+                        "color": "#0066FF"
+                    }
+                ],
+                "paddingAll": "15px"
+            }
+        }
+        bubbles.append(bubble)
+        
+    flex_message = {
+        "type": "carousel",
+        "contents": bubbles
+    }
+    
+    return FlexContainer.from_dict(flex_message)
 
 def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
     """
@@ -561,6 +704,200 @@ def create_analysis_result_flex(
             "contents": footer_contents,
             "spacing": "sm",
             "paddingAll": "15px"
+        }
+    }
+
+    return FlexContainer.from_dict(flex_message)
+
+
+def create_input_method_flex() -> FlexContainer:
+    """
+    สร้าง Flex Message สำหรับให้ผู้ใช้เลือกวิธีการค้นหาข้อมูลกรมธรรม์
+
+    วิธีที่รองรับ:
+    1. ถ่ายรูปบัตรประชาชน (OCR)
+    2. ถ่ายรูปป้ายทะเบียนรถ (OCR)
+    3. พิมพ์ชื่อ-นามสกุล
+    4. พิมพ์เลขทะเบียนรถ
+
+    Returns:
+        FlexContainer: Flex Message พร้อมส่งผ่าน LINE API
+    """
+    flex_message = {
+        "type": "bubble",
+        "hero": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "🔍 เลือกวิธีค้นหาข้อมูล",
+                    "weight": "bold",
+                    "size": "xl",
+                    "color": "#FFFFFF"
+                },
+                {
+                    "type": "text",
+                    "text": "กรุณาเลือกวิธีที่สะดวกที่สุด",
+                    "size": "sm",
+                    "color": "#DDEEFF",
+                    "margin": "sm"
+                }
+            ],
+            "backgroundColor": "#0066FF",
+            "paddingAll": "20px"
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "message",
+                        "label": "📷 ถ่ายรูปบัตรประชาชน",
+                        "text": "ใช้บัตรประชาชน"
+                    },
+                    "style": "primary",
+                    "color": "#0066FF",
+                    "margin": "md",
+                    "height": "sm"
+                },
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "message",
+                        "label": "🚗 ถ่ายรูปป้ายทะเบียนรถ",
+                        "text": "ใช้ป้ายทะเบียน"
+                    },
+                    "style": "primary",
+                    "color": "#00A550",
+                    "margin": "sm",
+                    "height": "sm"
+                },
+                {
+                    "type": "separator",
+                    "margin": "xl"
+                },
+                {
+                    "type": "text",
+                    "text": "หรือพิมพ์ข้อมูลเอง:",
+                    "size": "xs",
+                    "color": "#999999",
+                    "margin": "xl",
+                    "align": "center"
+                },
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "message",
+                        "label": "✍️ พิมพ์ชื่อ-นามสกุล",
+                        "text": "พิมพ์ชื่อ"
+                    },
+                    "style": "secondary",
+                    "margin": "sm",
+                    "height": "sm"
+                },
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "message",
+                        "label": "🔢 พิมพ์เลขทะเบียนรถ",
+                        "text": "พิมพ์ทะเบียน"
+                    },
+                    "style": "secondary",
+                    "margin": "sm",
+                    "height": "sm"
+                }
+            ],
+            "spacing": "sm",
+            "paddingAll": "20px"
+        }
+    }
+
+    return FlexContainer.from_dict(flex_message)
+
+
+def create_vehicle_selection_flex(policies: list) -> FlexContainer:
+    """
+    สร้าง Flex Message แสดงรายการรถหลายคันให้ผู้ใช้เลือก
+    (ใช้เมื่อค้นหาด้วยชื่อหรือบัตรประชาชนแล้วพบหลายกรมธรรม์)
+
+    Args:
+        policies: List ของ Dict ข้อมูลกรมธรรม์ที่พบ
+
+    Returns:
+        FlexContainer: Flex Message พร้อมส่งผ่าน LINE API
+    """
+    vehicle_buttons = []
+
+    for i, policy in enumerate(policies):
+        car_label = f"{policy['car_model']} - {policy['plate']}"
+        # ตัดข้อความให้ไม่เกิน 40 ตัวอักษร (LINE label limit)
+        if len(car_label) > 40:
+            car_label = car_label[:37] + "..."
+
+        btn = {
+            "type": "button",
+            "action": {
+                "type": "message",
+                "label": car_label,
+                "text": f"เลือกรถ:{policy['plate']}"
+            },
+            "style": "primary" if i == 0 else "secondary",
+            "margin": "sm",
+            "height": "sm"
+        }
+        if i == 0:
+            btn["color"] = "#0066FF"
+
+        vehicle_buttons.append(btn)
+
+    flex_message = {
+        "type": "bubble",
+        "hero": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "🚗 พบรถหลายคัน",
+                    "weight": "bold",
+                    "size": "xl",
+                    "color": "#FFFFFF"
+                },
+                {
+                    "type": "text",
+                    "text": f"พบ {len(policies)} รายการ กรุณาเลือกรถของท่าน",
+                    "size": "sm",
+                    "color": "#DDEEFF",
+                    "margin": "sm"
+                }
+            ],
+            "backgroundColor": "#FF6B00",
+            "paddingAll": "20px"
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": vehicle_buttons,
+            "spacing": "sm",
+            "paddingAll": "20px"
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "💡 กดเลือกรถที่ต้องการเคลมประกัน",
+                    "size": "xs",
+                    "color": "#999999",
+                    "wrap": True,
+                    "align": "center"
+                }
+            ],
+            "paddingAll": "10px"
         }
     }
 
