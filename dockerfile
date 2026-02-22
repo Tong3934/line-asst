@@ -4,11 +4,13 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
-    curl \
-    git \
  && update-ca-certificates
 
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
-CMD ["/entrypoint.sh"]
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["python", "main.py"]

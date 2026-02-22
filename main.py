@@ -39,10 +39,16 @@ import google.generativeai as genai
 import httpx
 
 # Import Mock Data
-from mock_data import get_policy_info
+from mock_data import search_policies_by_cid, search_policies_by_name, search_policies_by_plate
 
 # Import Flex Messages
-from flex_messages import create_request_info_flex, create_policy_info_flex, create_analysis_result_flex
+from flex_messages import (
+    create_request_info_flex, 
+    create_policy_info_flex, 
+    create_analysis_result_flex, 
+    create_vehicle_selection_flex,
+    create_additional_info_prompt_flex
+)
 
 # โหลด environment variables
 load_dotenv()
@@ -105,7 +111,95 @@ def extract_phone_from_response(text: str) -> Optional[str]:
     return None
 
 
-# ==================== Gemini AI Analysis ====================
+def process_search_result(line_bot_api, event, user_id, policies, use_push=False):
+    """
+    จัดการผลลัพธ์การค้นหา ส่งข้อความตอบกลับ และอัปเดต state
+    """
+    if not policies:
+        msg = TextMessage(text="❌ ไม่พบข้อมูลกรมธรรม์\n\nกรุณาตรวจสอบข้อมูลอีกครั้ง หรือติดต่อเจ้าหน้าที่")
+        if use_push:
+            line_bot_api.push_message(PushMessageRequest(to=user_id, messages=[msg]))
+        else:
+            line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token, messages=[msg]))
+        return False
+
+    if len(policies) > 1:
+        user_sessions[user_id]["state"] = "waiting_for_vehicle_selection"
+        user_sessions[user_id]["search_results"] = policies
+        flex_message = create_vehicle_selection_flex(policies)
+        msg = FlexMessage(alt_text="กรุณาเลือกรถยนต์", contents=flex_message)
+        if use_push:
+            line_bot_api.push_message(PushMessageRequest(to=user_id, messages=[msg]))
+        else:
+            line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token, messages=[msg]))
+        return True
+    else:
+        policy_info = policies[0]
+        user_sessions[user_id] = {
+            "state": "waiting_for_counterpart",
+            "policy_info": policy_info
+        }
+        
+        # แสดงรายละเอียดกรมธรรม์ (Step 5)
+        flex_policy = create_policy_info_flex(policy_info)
+        
+        # ถามเรื่องคู่กรณี (Step 6)
+        quick_reply = QuickReply(items=[
+            QuickReplyItem(action=MessageAction(label="✅ มีคู่กรณี", text="มีคู่กรณี")),
+            QuickReplyItem(action=MessageAction(label="❌ ไม่มีคู่กรณี", text="ไม่มีคู่กรณี"))
+        ])
+        msg_counterpart = TextMessage(
+            text="🚘 พบข้อมูลรถยนต์ของคุณแล้ว\n\n❓ **มีคู่กรณีหรือไม่?**\n\nกรุณาเลือก:",
+            quick_reply=quick_reply
+        )
+        
+        messages = [
+            FlexMessage(alt_text="พบข้อมูลกรมธรรม์", contents=flex_policy),
+            msg_counterpart
+        ]
+        
+        if use_push:
+            line_bot_api.push_message(PushMessageRequest(to=user_id, messages=messages))
+        else:
+            line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token, messages=messages))
+        return True
+
+
+
+def extract_info_from_image_with_gemini(image_bytes: bytes) -> Dict:
+    """
+    ใช้ Gemini AI อ่านข้อมูลจากรูปภาพ (บัตรประชาชน หรือ ทะเบียนรถ)
+    """
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(image_bytes))
+
+        prompt = """
+        วิเคราะห์รูปภาพนี้ว่าเป็น "บัตรประชาชน" หรือ "ทะเบียนรถ" 
+        แล้วสกัดข้อมูลที่สำคัญออกมาในรูปแบบ JSON ดังนี้:
+        {
+          "type": "id_card" หรือ "license_plate" หรือ "unknown",
+          "value": "เลขบัตรประชาชน 13 หลัก" หรือ "เลขทะเบียนรถ (เช่น 1กข1234)" หรือ null
+        }
+        
+        กฎ:
+        1. ถ้าเป็นบัตรประชาชน ให้สกัดเลขบัตร 13 หลัก (เอาแค่ตัวเลข)
+        2. ถ้าเป็นทะเบียนรถ ให้สกัดหมวดอักษรและตัวเลข (เช่น 1กข1234, ฌห55) ไม่ต้องเอาชื่อจังหวัด
+        3. ถ้าไม่แน่ใจให้ตอบ unknown
+        """
+
+        response = gemini_model.generate_content([prompt, img])
+        
+        # ค้นหา JSON ในคำตอบ
+        match = re.search(r'\{.*\}', response.text, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return {"type": "unknown", "value": None}
+
+    except Exception as e:
+        print(f"Error in extract_info_from_image_with_gemini: {str(e)}")
+        return {"type": "unknown", "value": None}
+
 def analyze_damage_with_gemini(
     image_bytes: bytes,
     policy_info: Dict,
@@ -305,103 +399,101 @@ def handle_text_message(event):
                 )
                 return
 
-            # Case 2: รับข้อมูลชื่อและทะเบียนรถ
+            # Case 2: รับข้อมูลชื่อ ทะเบียนรถ หรือ เลขบัตรประชาชน
             if user_id in user_sessions and user_sessions[user_id].get("state") == "waiting_for_info":
-                # แยกข้อมูล (รูปแบบ: "ชื่อ-นามสกุล, ทะเบียนรถ" หรือ "ชื่อ-นามสกุล, ทะเบียนรถ, รายละเอียด")
-                parts = [part.strip() for part in text.split(",")]
+                text_clean = text.replace('-', '').replace(' ', '')
+                
+                if re.match(r'^\d{13}$', text_clean):
+                    policies = search_policies_by_cid(text_clean)
+                else:
+                    policy = search_policies_by_plate(text)
+                    if policy:
+                        policies = [policy]
+                    else:
+                        policies = search_policies_by_name(text)
 
-                if len(parts) < 2 or len(parts) > 3:
-                    line_bot_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[TextMessage(text="❌ รูปแบบข้อมูลไม่ถูกต้อง\n\n📝 กรุณาส่งในรูปแบบ:\nชื่อ-นามสกุล, ทะเบียนรถ, รายละเอียด (optional)\n\n✅ ตัวอย่าง:\n• สมชาย เข็มกลัด, 1กข1234\n• สมชาย เข็มกลัด, 1กข1234, ชนเสาหน้ารถ")]
+                process_search_result(line_bot_api, event, user_id, policies)
+                return
+
+            # Case 2.1: เลือกรถ
+            if user_id in user_sessions and user_sessions[user_id].get("state") == "waiting_for_vehicle_selection":
+                if text.startswith("เลือกทะเบียน "):
+                    plate = text.replace("เลือกทะเบียน ", "")
+                    policies = user_sessions[user_id].get("search_results", [])
+                    policy_info = next((p for p in policies if p["plate"] == plate), None)
+                    if policy_info:
+                        user_sessions[user_id] = {
+                            "state": "waiting_for_counterpart",
+                            "policy_info": policy_info
+                        }
+                        
+                        # แสดงรายละเอียดกรมธรรม์ (Step 5)
+                        flex_policy = create_policy_info_flex(policy_info)
+                        
+                        # ถามเรื่องคู่กรณี (Step 6)
+                        quick_reply = QuickReply(items=[
+                            QuickReplyItem(action=MessageAction(label="✅ มีคู่กรณี", text="มีคู่กรณี")),
+                            QuickReplyItem(action=MessageAction(label="❌ ไม่มีคู่กรณี", text="ไม่มีคู่กรณี"))
+                        ])
+                        
+                        line_bot_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[
+                                    FlexMessage(alt_text="พบข้อมูลกรมธรรม์", contents=flex_policy),
+                                    TextMessage(
+                                        text="❓ **มีคู่กรณีหรือไม่?**\n\nกรุณาเลือก:",
+                                        quick_reply=quick_reply
+                                    )
+                                ]
+                            )
                         )
-                    )
-                    return
+                        return
+                    else:
+                        line_bot_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text="❌ ไม่พบรถคันที่ท่านเลือก กรุณาเลือกจากเมนูอีกครั้ง")]
+                            )
+                        )
+                        return
 
-                name = parts[0]
-                plate = parts[1]
-                additional_info = parts[2] if len(parts) == 3 else None
-
-                # บันทึกข้อมูลชั่วคราว และเปลี่ยน state เป็น "waiting_for_counterpart"
-                user_sessions[user_id] = {
-                    "state": "waiting_for_counterpart",
-                    "name": name,
-                    "plate": plate,
-                    "additional_info": additional_info
-                }
-
-                # ส่งคำถามพร้อม Quick Reply Buttons (2 ปุ่ม: มีคู่กรณี / ไม่มีคู่กรณี)
-                quick_reply = QuickReply(items=[
-                    QuickReplyItem(action=MessageAction(
-                        label="✅ มีคู่กรณี",
-                        text="มีคู่กรณี"
-                    )),
-                    QuickReplyItem(action=MessageAction(
-                        label="❌ ไม่มีคู่กรณี",
-                        text="ไม่มีคู่กรณี"
-                    ))
-                ])
-
-                additional_text = f"\nรายละเอียด: {additional_info}" if additional_info else ""
-
+            # Case 2.2: รับเหตุการณ์
+            if user_id in user_sessions and user_sessions[user_id].get("state") == "waiting_for_additional_info":
+                if text.strip() != "ข้าม":
+                    user_sessions[user_id]["additional_info"] = text
+                else:
+                    user_sessions[user_id]["additional_info"] = None
+                
+                user_sessions[user_id]["state"] = "waiting_for_image"
+                
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(
-                            text=f"📋 ข้อมูลเบื้องต้น:\n\nชื่อ: {name}\nทะเบียน: {plate}{additional_text}\n\n❓ **มีคู่กรณีหรือไม่?**\n\nกรุณาเลือก:",
-                            quick_reply=quick_reply
-                        )]
+                        messages=[
+                            TextMessage(text="📸 ขั้นตอนสุดท้าย: กรุณาส่งรูปภาพความเสียหายของรถค่ะ"),
+                            TextMessage(text="เพื่อให้ AI วิเคราะห์และประเมินสิทธิ์การเคลมให้คุณทันที")
+                        ]
                     )
                 )
                 return
 
-            # Case 2.5: รับคำตอบเรื่องคู่กรณี
+            # Case 2.5: รับคำตอบเรื่องคู่กรณี (Step 6 -> 7)
             if user_id in user_sessions and user_sessions[user_id].get("state") == "waiting_for_counterpart":
 
                 # ตรวจสอบคำตอบ
                 if text in ["มีคู่กรณี", "ไม่มีคู่กรณี"]:
-                    has_counterpart = text
+                    user_sessions[user_id]["has_counterpart"] = text
+                    user_sessions[user_id]["state"] = "waiting_for_additional_info"
 
-                    # ดึงข้อมูลที่เก็บไว้จาก session
-                    name = user_sessions[user_id]["name"]
-                    plate = user_sessions[user_id]["plate"]
-                    additional_info = user_sessions[user_id].get("additional_info")
-
-                    # ค้นหาข้อมูลกรมธรรม์ (ตอนนี้ค่อยค้นหา!)
-                    policy_info = get_policy_info(name, plate)
-
-                    if not policy_info:
-                        line_bot_api.reply_message(
-                            ReplyMessageRequest(
-                                reply_token=event.reply_token,
-                                messages=[TextMessage(
-                                    text=f"❌ ไม่พบข้อมูลกรมธรรม์\n\nชื่อ: {name}\nทะเบียนรถ: {plate}\n\nกรุณาตรวจสอบข้อมูลอีกครั้ง หรือติดต่อเจ้าหน้าที่"
-                                )]
-                            )
-                        )
-                        # รีเซ็ต state
-                        user_sessions[user_id] = {"state": "waiting_for_info"}
-                        return
-
-                    # บันทึกข้อมูลครบถ้วนใน session
-                    user_sessions[user_id] = {
-                        "state": "waiting_for_image",
-                        "name": name,
-                        "plate": plate,
-                        "additional_info": additional_info,
-                        "has_counterpart": has_counterpart,  # เก็บข้อมูลคู่กรณี
-                        "policy_info": policy_info
-                    }
-
-                    # ส่ง Flex Message แสดงข้อมูลกรมธรรม์และขอรูปภาพ
-                    flex_message = create_policy_info_flex(policy_info)
+                    # ส่ง Flex Message ขอรายละเอียดเพิ่มเติม (Step 7)
+                    flex_additional = create_additional_info_prompt_flex()
                     line_bot_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
                             messages=[FlexMessage(
-                                alt_text="พบข้อมูลกรมธรรม์ กรุณาส่งรูปภาพ",
-                                contents=flex_message
+                                alt_text="กรุณาระบุรายละเอียดเพิ่มเติม",
+                                contents=flex_additional
                             )]
                         )
                     )
@@ -460,8 +552,11 @@ def handle_image_message(event):
         line_bot_api = MessagingApi(api_client)
 
         try:
-            # ตรวจสอบว่าผู้ใช้อยู่ในขั้นตอนรอรูปภาพหรือไม่
-            if user_id not in user_sessions or user_sessions[user_id].get("state") != "waiting_for_image":
+            # ดึงสถานะปัจจุบัน
+            current_state = user_sessions.get(user_id, {}).get("state")
+
+            # ตรวจสอบว่าผู้ใช้อยู่ในขั้นตอนที่ถูกต้องหรือไม่
+            if current_state not in ["waiting_for_info", "waiting_for_image"]:
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
@@ -471,27 +566,52 @@ def handle_image_message(event):
                 return
 
             # แจ้งว่ากำลังประมวลผล
+            if current_state == "waiting_for_info":
+                msg_text = "⏳ กำลังค้นหาข้อมูล...\n\nกรุณารอสักครู่ค่ะ"
+            else:
+                msg_text = "⏳ กำลังวิเคราะห์รูปภาพ...\n\nกรุณารอสักครู่ค่ะ (ประมาณ 10-30 วินาที)"
+
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text="⏳ กำลังวิเคราะห์รูปภาพ...\n\nกรุณารอสักครู่ค่ะ (ประมาณ 10-30 วินาที)")]
+                    messages=[TextMessage(text=msg_text)]
                 )
             )
-
-            print(f"🔍 เริ่มวิเคราะห์รูปภาพสำหรับ user: {user_id}")
 
             # ดาวน์โหลดรูปภาพจาก LINE
             message_id = event.message.id
             image_url = f"https://api-data.line.me/v2/bot/message/{message_id}/content"
             headers = {"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"}
 
-            print(f"📥 กำลังดาวน์โหลดรูปภาพ...")
             with httpx.Client() as client:
                 response = client.get(image_url, headers=headers)
                 response.raise_for_status()
                 image_bytes = response.content
 
-            print(f"✅ ดาวน์โหลดรูปภาพสำเร็จ: {len(image_bytes)} bytes")
+            # --- CASE 1: ส่งรูปเพื่อหาข้อมูลรถ (บัตร ปชช / ทะเบียนรถ) ---
+            if current_state == "waiting_for_info":
+                print(f"🔍 เริ่ม OCR รูปภาพสำหรับหาข้อมูลรถ: {user_id}")
+                info = extract_info_from_image_with_gemini(image_bytes)
+                print(f"🤖 ผลลัพธ์ OCR: {info}")
+
+                if info["type"] == "id_card" and info["value"]:
+                    policies = search_policies_by_cid(info["value"])
+                    process_search_result(line_bot_api, event, user_id, policies, use_push=True)
+                elif info["type"] == "license_plate" and info["value"]:
+                    policy = search_policies_by_plate(info["value"])
+                    policies = [policy] if policy else []
+                    process_search_result(line_bot_api, event, user_id, policies, use_push=True)
+                else:
+                    line_bot_api.push_message(
+                        PushMessageRequest(
+                            to=user_id,
+                            messages=[TextMessage(text="❌ ไม่พบข้อมูลในรูปภาพ\n\nกรุณาส่งรูปบัตรประชาชน หรือรูปทะเบียนรถที่ชัดเจน หรือพิมพ์ข้อมูลด้วยตนเองค่ะ")]
+                        )
+                    )
+                return
+
+            # --- CASE 2: ส่งรูปความเสียหายเพื่อวิเคราะห์การเคลม (เดิม) ---
+            print(f"🔍 เริ่มวิเคราะห์รูปความเสียหายสำหรับ user: {user_id}")
 
             # ดึงข้อมูลกรมธรรม์จาก session
             policy_info = user_sessions[user_id]["policy_info"]
