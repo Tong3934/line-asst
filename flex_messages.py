@@ -407,6 +407,33 @@ def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
             ],
             "spacing": "sm",
             "paddingAll": "20px"
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "separator",
+                    "margin": "sm"
+                },
+                {
+                    "type": "text",
+                    "text": "💡 ขั้นตอนถัดไป:",
+                    "size": "xs",
+                    "color": "#0066FF",
+                    "weight": "bold",
+                    "margin": "md"
+                },
+                {
+                    "type": "text",
+                    "text": "1. เลือกสถานะคู่กรณีด้านล่าง\n2. ส่งรูปความเสียหายเพื่อวิเคราะห์สิทธิ์",
+                    "size": "xs",
+                    "color": "#666666",
+                    "wrap": True,
+                    "margin": "xs"
+                }
+            ],
+            "paddingAll": "15px"
         }
     }
 
