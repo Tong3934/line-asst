@@ -1,7 +1,7 @@
 # Business Requirement Document (BRD)
-## LINE Insurance Claim Eligibility Bot — "เช็คสิทธิ์เคลมด่วน"
+## LINE Insurance Claims Bot — "เช็คสิทธิ์ & เคลมประกันด่วน"
 
-**Document Version:** 1.0  
+**Document Version:** 2.0  
 **Date:** February 2026  
 **Status:** Draft  
 **Owner:** Product Owner
@@ -10,9 +10,10 @@
 
 ## Document History
 
-| Version | Date | Author | Changes |
-|---|---|---|---|
-| 1.0 | February 2026 | Product Owner | Initial release |
+| Version | Date | Changes |
+|---|---|---|
+| 1.0 | February 2026 | Initial release — eligibility check only |
+| 2.0 | February 2026 | Merged: document upload, AI data extraction, data storage, claim submission, reviewer & manager dashboards |
 
 ---
 
@@ -22,29 +23,33 @@
 2. [Business Problem & Opportunity](#2-business-problem--opportunity)
 3. [Project Objectives](#3-project-objectives)
 4. [Stakeholders](#4-stakeholders)
-5. [Target Users](#5-target-users)
-6. [User Journey (Step-by-Step)](#6-user-journey-step-by-step)
-7. [Functional Requirements](#7-functional-requirements)
-8. [Business Rules](#8-business-rules)
-9. [Non-Functional Requirements](#9-non-functional-requirements)
-10. [System Integrations](#10-system-integrations)
-11. [Data Requirements](#11-data-requirements)
-12. [Out of Scope](#12-out-of-scope)
-13. [Assumptions & Constraints](#13-assumptions--constraints)
-14. [Success Metrics (KPIs)](#14-success-metrics-kpis)
-15. [Known Risks & Mitigations](#15-known-risks--mitigations)
-16. [Glossary](#16-glossary)
+5. [Target Users & Roles](#5-target-users--roles)
+6. [Supported Claim Types](#6-supported-claim-types)
+7. [User Journey Overview](#7-user-journey-overview)
+8. [Functional Requirements](#8-functional-requirements)
+9. [Business Rules](#9-business-rules)
+10. [Non-Functional Requirements](#10-non-functional-requirements)
+11. [System Integrations](#11-system-integrations)
+12. [Data Requirements](#12-data-requirements)
+13. [Out of Scope](#13-out-of-scope)
+14. [Assumptions & Constraints](#14-assumptions--constraints)
+15. [Success Metrics (KPIs)](#15-success-metrics-kpis)
+16. [Known Risks & Mitigations](#16-known-risks--mitigations)
+17. [Glossary](#17-glossary)
 
 ---
 
 ## 1. Executive Summary
 
-**Product Name:** เช็คสิทธิ์เคลมด่วน (Quick Insurance Claim Eligibility Check)  
-**Platform:** LINE Messaging App (Chatbot)
+**Product Name:** เช็คสิทธิ์ & เคลมประกันด่วน (Quick Insurance Eligibility Check & Claim Submission)  
+**Customer Interface:** LINE Messaging App (Chatbot)  
+**Internal Interface:** Web dashboards for Reviewer and Manager roles
 
-This product is a **LINE chatbot** that helps car insurance policyholders instantly check whether they are eligible to file an insurance claim — directly from their LINE app, without calling a hotline or visiting a service center.
+This product is an **AI-powered LINE chatbot** that guides insurance policyholders through the complete insurance claim journey — from checking eligibility all the way to submitting a fully documented claim — without leaving the LINE app.
 
-The user simply types a trigger phrase in LINE, provides their identity information, answers a few short questions, and sends a photo of the vehicle damage. The bot then uses **AI (Google Gemini)** to read the actual policy document and the damage photo, and delivers a clear eligibility verdict along with recommended next steps — all within one chat conversation.
+The customer describes their situation, verifies their identity, then uploads the required documents (photos of ID cards, driving licenses, vehicle registration, damage photos, or medical documents). The AI **automatically categorises each photo and extracts key data from it**, validates completeness, and assembles the full claim package. Once all required documents are uploaded, the customer submits the claim with a single tap.
+
+Internally, a **Reviewer web dashboard** lets claims staff review each document, confirm extracted data, and update claim status. A **Manager web dashboard** provides real-time analytics on volumes, accuracy rates, and paid amounts.
 
 ---
 
@@ -52,24 +57,24 @@ The user simply types a trigger phrase in LINE, provides their identity informat
 
 ### The Problem
 
-When a vehicle accident happens, policyholders often face the following pain points:
-
-| Pain Point | Description |
-|---|---|
-| **Long wait on hotlines** | Calling the insurance hotline can take 10–30+ minutes during peak hours |
-| **Uncertainty about eligibility** | Customers are unsure whether their insurance type (Class 1, 2+, 3+) covers their specific incident |
-| **Complexity of policy documents** | Policy PDFs are long and use legal or technical language that is hard for customers to understand |
-| **Wasted trips** | Customers drive to service centers only to learn they are not eligible to claim |
-| **Delayed action** | Not knowing the right steps quickly leads to missed evidence collection at the scene |
+| Pain Point | Who Feels It | Description |
+|---|---|---|
+| **Long hotline wait times** | Customer | Calling the insurance hotline can take 10–30+ minutes during peak hours |
+| **Uncertainty about coverage** | Customer | Customers do not know if their policy type and incident qualify for a claim |
+| **Paper-heavy document submission** | Customer | Customers must physically visit a service center or mail documents |
+| **Manual data re-entry** | Claims Staff | Staff manually type data from photos and scans into internal systems |
+| **No visibility into document quality** | Claims Staff | Staff cannot easily flag which documents were useful or too unclear to process |
+| **Fragmented analytics** | Manager | No single dashboard for claim volumes, accuracy, and amounts paid |
 
 ### The Opportunity
 
-LINE is the most-used messaging app in Thailand, with over 50 million users. By placing this service inside LINE, the company can:
+LINE is the most-used messaging app in Thailand (50M+ active users). Placing the entire claim experience inside LINE means:
 
-- Provide **instant self-service** to policyholders 24/7
-- **Reduce inbound call volume** to the claims hotline
-- **Improve customer satisfaction** by giving clear, fast answers
-- **Increase digital touchpoints** with existing customers at no additional acquisition cost
+- **Zero new app to install** — customers already have LINE
+- **Camera always ready** — customers photograph documents at the scene of the incident
+- **AI removes manual entry** — structured data extracted automatically from every photo
+- **Faster first assessment** — reviewers receive a complete, pre-extracted claim package
+- **Rich analytics** — structured data enables dashboards and process insights
 
 ---
 
@@ -77,465 +82,587 @@ LINE is the most-used messaging app in Thailand, with over 50 million users. By 
 
 | # | Objective | Measurable Target |
 |---|---|---|
-| 1 | Enable policyholders to self-check claim eligibility without calling the hotline | Bot handles end-to-end in < 60 seconds |
-| 2 | Reduce inbound claim-inquiry calls during business hours | 20% reduction in eligibility inquiry calls within 3 months of launch |
-| 3 | Provide AI-powered damage assessment referencing the actual policy document | Accuracy confirmed by underwriting team spot-check: ≥ 90% correct verdict |
-| 4 | Support multiple identity verification methods | Accept: ID card number, license plate, full name, or photo of either |
-| 5 | Operate as a proof of concept (PoC) that can be scaled to production | PoC running on Docker with a clear production upgrade path documented |
+| 1 | Let policyholders check claim eligibility instantly without calling | Eligibility verdict in < 45 seconds |
+| 2 | Let policyholders submit a complete, documented claim through LINE | End-to-end submission in < 5 minutes |
+| 3 | Automate data extraction from document photos | AI extraction ≥ 90% accuracy on key fields (name, ID, dates) — verified by reviewer spot-check |
+| 4 | Reduce manual intake work for claims staff | 70% of submitted claims arrive with all fields pre-extracted |
+| 5 | Provide real-time dashboards for reviewers and managers | Data available within 1 minute of submission |
+| 6 | Support both Car Damage and Health claim types | Both types fully functional at launch |
 
 ---
 
 ## 4. Stakeholders
 
-| Role | Name / Team | Responsibility |
+| Role | Team | Responsibility |
 |---|---|---|
 | **Product Owner** | Insurance Digital Team | Defines requirements, accepts deliverables |
 | **Business Sponsor** | Head of Claims Operations | Approves budget, defines success criteria |
-| **End Users** | Thai car insurance policyholders | Use the bot on LINE |
-| **Claims Operations Team** | Call center / adjusters | Receives escalations, validates AI accuracy |
-| **IT / DevOps Team** | Technical Development Team | Builds, deploys, and maintains the system |
-| **Compliance / Legal** | Risk & Compliance | Ensures AI output is properly disclaimed as advisory only |
-| **LINE Platform** | LINE Corporation | Provides the messaging infrastructure and Messaging API |
-| **Google (AI Provider)** | Google Cloud / AI Studio | Provides Gemini AI API for OCR and damage analysis |
+| **Customer** | Thai policyholders | Files claims via LINE chatbot |
+| **Reviewer** | Claims Operations / Adjusters | Reviews documents, marks quality, updates status via web dashboard |
+| **Manager** | Claims Operations Management | Monitors performance via analytics dashboard |
+| **Admin** | IT / DevOps | Monitors logs, configuration, AI token costs |
+| **IT / DevOps Team** | Technical Development | Builds, deploys, and maintains the system |
+| **Compliance / Legal** | Risk & Compliance | Ensures AI outputs are disclaimed; data privacy compliance |
+| **LINE Platform** | LINE Corporation | Messaging infrastructure and Messaging API |
+| **AI Provider** | Google Gemini / Azure OpenAI GPT-4 Vision | AI model for OCR, categorisation, and damage analysis |
 
 ---
 
-## 5. Target Users
+## 5. Target Users & Roles
 
-### Primary User
+### Role 1 — Customer (LINE Chatbot)
 
-> A Thai car insurance policyholder who has just been involved in a vehicle accident (or potential damage event) and wants to know immediately whether they can file a claim.
+> A Thai insurance policyholder who has just had a vehicle accident or health event and wants to file a claim from their smartphone.
 
-**Profile:**
-- Has an active LINE account (standard in Thailand)
-- Owns a vehicle with an active insurance policy
-- May not be familiar with insurance terminology
-- Is under stress and wants a fast, clear answer
-- Has a smartphone capable of taking photos
+- **Interface:** LINE app
+- **Can do:** Check eligibility, verify identity, upload documents, submit claim
+- **Cannot do:** Access web dashboards
 
-### Secondary User (Admin / Internal)
+### Role 2 — Reviewer (Web Dashboard at /reviewer)
 
-> Insurance operations staff who may monitor the bot dashboard, review AI verdicts for quality, or handle escalations from the bot.
+> A claims staff member who reviews submitted documents, verifies AI-extracted data, and moves the claim through the approval workflow.
+
+- **Interface:** Web browser
+- **Can do:** View claims, inspect document images, see AI-extracted data, mark Useful / Not Useful, update status, add memos
+
+### Role 3 — Manager (Web Dashboard at /manager)
+
+> A claims operations manager who monitors overall performance — volumes, accuracy, times, and paid amounts.
+
+- **Interface:** Web browser
+- **Can do:** View statistics, filter by date range and claim type, drill down to claims
+
+### Role 4 — Admin (Web Dashboard at /admin)
+
+> An IT staff member who monitors system health, logs, and AI token costs.
+
+- **Interface:** Web browser
+- **Can do:** Search logs, change log verbosity at runtime, view AI API usage and cost
 
 ---
 
-## 6. User Journey (Step-by-Step)
+## 6. Supported Claim Types
 
-The entire interaction happens inside LINE chat. Below is the full customer journey from trigger to result.
+| Code | Claim Type | Thai Name | Sub-type | Required Documents |
+|:---:|---|---|---|---|
+| **CD** | Car Damage | เคลมประกันรถยนต์ | With other party (มีคู่กรณี) | Driving license (customer) + **Driving license (other party)** + Vehicle registration + ≥1 damage photo |
+| **CD** | Car Damage | เคลมประกันรถยนต์ | No other party (ไม่มีคู่กรณี) — e.g. hit a pole, wall, or tree | Driving license (customer) + Vehicle registration + ≥1 damage photo |
+| **H** | Health | เคลมประกันสุขภาพ | — | Citizen ID card + Medical certificate + Itemised bill + Receipt(s) |
+
+**Optional documents:**
+- CD: Vehicle location photo (with GPS if available in EXIF)
+- H: Discharge summary
+
+---
+
+## 7. User Journey Overview
+
+> For the full visual step-by-step journey see [user-journey.md](user-journey.md).
+
+### High-Level Flow
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    CUSTOMER JOURNEY                         │
-└─────────────────────────────────────────────────────────────┘
-
-  STEP 1 — Trigger
-  ─────────────────
-  Customer types: "เช็คสิทธิ์เคลมด่วน"
-  Bot responds with a welcome card asking for identity information.
-
-  STEP 2 — Identity Verification
-  ────────────────────────────────
-  Customer provides ONE of the following:
-    • 13-digit national ID number (typed)
-    • Vehicle license plate number (typed)
-    • Full name (typed)
-    • Photo of ID card (AI reads it automatically)
-    • Photo of license plate (AI reads it automatically)
-
-  Bot searches its policy database and responds:
-    • If 1 policy found → Shows policy details, moves to Step 3
-    • If multiple policies found → Shows a vehicle selection carousel
-    • If no policy found → Notifies customer and ends
-
-  STEP 3 — Select Vehicle (if multiple policies)
-  ────────────────────────────────────────────────
-  Customer taps the correct vehicle from a carousel card.
-  Bot confirms selection and moves to Step 4.
-
-  STEP 4 — Counterpart Question
-  ──────────────────────────────
-  Bot asks: "Is there another vehicle involved in the accident?"
-  Customer selects one of two quick-reply buttons:
-    • ✅ Yes, there is a counterpart vehicle
-    • ❌ No, it was a single-vehicle incident (hit a post, wall, etc.)
-
-  STEP 5 — Incident Description (Optional)
-  ──────────────────────────────────────────
-  Bot presents a card asking for a brief description of what happened.
-  Customer can:
-    • Type a short description (e.g., "scraped a concrete pillar in a parking lot")
-    • Tap "Skip" to proceed without a description
-
-  STEP 6 — Damage Photo Submission
-  ──────────────────────────────────
-  Bot asks the customer to send a clear photo of the vehicle damage.
-  Customer takes a photo and sends it in the chat.
-
-  STEP 7 — AI Analysis (automated, ~10–30 seconds)
-  ──────────────────────────────────────────────────
-  Bot acknowledges the photo and begins analysis.
-  In the background:
-    1. Retrieves the customer's actual policy PDF from the database
-    2. Sends both the damage photo and the policy PDF to Google Gemini AI
-    3. AI reads the policy and evaluates the damage against policy conditions
-
-  STEP 8 — Result Delivered
-  ──────────────────────────
-  Bot delivers a structured result card containing:
-    ✦ Policy details (type, coverage, excess amount)
-    ✦ Damage description (location, type, probable cause)
-    ✦ Eligibility verdict (one of three outcomes — see Business Rules)
-    ✦ Estimated repair cost range vs. excess
-    ✦ 3 recommended next steps
-    ✦ Call button to the insurance hotline (if number found in policy)
+Customer (LINE)                System                         Internal (Web)
+───────────────────────────────────────────────────────────────────────────────
+1. Trigger
+   Type incident or            Detect claim type (CD / H)
+   "เช็คสิทธิ์เคลมด่วน"  →   Generate Claim ID
+                               Create claim folder & records
+                          ↓
+2. Identity verification  →   AI reads ID photo if sent (OCR)
+   Type ID / upload photo      Verify against policy database
+                               Display coverage details
+                          ↓
+3. Document upload         →   AI categorises each photo
+   (one at a time until        AI extracts key data fields
+    all required received)     Save image + extracted JSON
+                               Show customer what was read
+                               Prompt for next missing doc
+                          ↓
+4. Ownership confirmation  →   Car Damage only:
+   "Mine" / "Other party"      Assign license to correct party
+                               in extracted_data.json
+                          ↓
+5. All documents complete  →   Validate completeness
+   Customer submits            Mark status = Submitted
+                               Save final claim package
+                          ↓                                ↓
+6. Claim ID shown                              Reviewer opens claim
+   to customer                                 Reviews docs + extracted data
+                                               Marks Useful / Not Useful
+                                               Updates status (Approved / Rejected / Paid)
+                                                              ↓
+                                               Manager views analytics
+                                               Volumes, accuracy, amounts paid
 ```
 
 ---
 
-## 7. Functional Requirements
+## 8. Functional Requirements
 
-### FR-01: Trigger & Session Start
-
-| ID | Requirement |
-|---|---|
-| FR-01.1 | The bot MUST start a new session when the user sends the exact phrase **"เช็คสิทธิ์เคลมด่วน"** |
-| FR-01.2 | Sending the trigger phrase at any point MUST reset any existing session for that user |
-| FR-01.3 | The bot MUST display a welcome UI card prompting the user to provide their identity information |
-
----
-
-### FR-02: Identity Verification & Policy Lookup
+### FR-01: Conversation Trigger & Claim Type Detection
 
 | ID | Requirement |
 |---|---|
-| FR-02.1 | The bot MUST accept a **13-digit national ID number** (typed) and search for matching policies |
-| FR-02.2 | The bot MUST accept a **vehicle license plate number** (typed) and search for matching policies |
-| FR-02.3 | The bot MUST accept a **full or partial name** (typed) and search for matching policies |
-| FR-02.4 | The bot MUST accept a **photo of a Thai national ID card** and automatically extract the ID number using AI OCR |
-| FR-02.5 | The bot MUST accept a **photo of a vehicle license plate** and automatically extract the plate number using AI OCR |
-| FR-02.6 | If exactly one policy is found, the bot MUST display the policy details and proceed |
-| FR-02.7 | If more than one policy is found, the bot MUST display a vehicle selection carousel with one option per vehicle |
-| FR-02.8 | If no policy is found, the bot MUST display a clear "not found" message and prompt the user to check their information |
+| FR-01.1 | The bot MUST start a new session when the user describes an incident or sends "เช็คสิทธิ์เคลมด่วน" |
+| FR-01.2 | The bot MUST detect the claim type automatically from keywords in the message |
+| FR-01.3 | **Car Damage keywords:** รถ, ชน, เฉี่ยว, ขโมย, หาย, car, vehicle, accident, damage, crash |
+| FR-01.4 | **Health keywords:** เจ็บ, ป่วย, ผ่าตัด, โรงพยาบาล, health, sick, hospital, medical, surgery |
+| FR-01.5 | If both keyword sets match equally, the bot MUST ask the customer to clarify |
+| FR-01.6 | On detection, the system MUST auto-generate a Claim ID and create the claim record immediately |
+| FR-01.7 | **Claim ID format:** `{CD or H}-{YYYYMMDD}-{NNNNNN}` — 6-digit zero-padded sequence per claim type, persisted across restarts |
+| FR-01.8 | Customer can cancel and restart at any time: ยกเลิก, cancel, เริ่มใหม่, restart |
 
 ---
 
-### FR-03: Vehicle Selection
+### FR-02: Policy Verification
 
 | ID | Requirement |
 |---|---|
-| FR-03.1 | When multiple policies are found, the bot MUST display a scrollable carousel with key vehicle information per card (plate, car model, policy type) |
-| FR-03.2 | Each card MUST have a selectable button that sets the chosen vehicle and advances the conversation |
+| FR-02.1 | After claim type is detected, the bot MUST request identity verification before accepting documents |
+| FR-02.2 | The bot MUST accept a **typed 13-digit national ID number** |
+| FR-02.3 | The bot MUST accept a **photo of a Thai national ID card or driving license** — AI reads the 13-digit ID automatically |
+| FR-02.4 | AI OCR MUST return digits only — no asterisks, dashes, or masking |
+| FR-02.5 | The system MUST check the ID against the policy database and respond with: (a) Valid active policy, (b) Expired, (c) Inactive, or (d) Not found |
+| FR-02.6 | On a valid policy, the bot MUST display: policy number, coverage type, coverage amount, deductible, vehicle or health plan details |
+| FR-02.7 | Document upload MUST only begin after successful policy verification |
 
 ---
 
-### FR-04: Counterpart Declaration
+### FR-03: Document Upload & AI Categorisation
 
 | ID | Requirement |
 |---|---|
-| FR-04.1 | After confirming the vehicle, the bot MUST ask whether there is a counterpart vehicle involved |
-| FR-04.2 | The bot MUST present this question as **quick-reply buttons** ("มีคู่กรณี" / "ไม่มีคู่กรณี") so the user does not need to type |
-| FR-04.3 | The user's answer MUST be stored and used as context in the AI analysis |
+| FR-03.1 | The bot MUST accept image uploads (JPG, PNG, WebP) |
+| FR-03.2 | After each upload, the AI MUST automatically **categorise** the document (e.g., driving_license, receipt) |
+| FR-03.3 | If the AI cannot determine type ("unknown"), it MUST reject the image and tell the user which types are accepted |
+| FR-03.4 | After each successful upload, the bot MUST confirm which document was recognised |
+| FR-03.5 | The bot MUST always show upload progress: documents received so far and what is still missing |
+| FR-03.6 | **Car Damage — With other party:** driving_license_customer + driving_license_other_party + vehicle_registration + vehicle_damage_photo (≥1); optional: vehicle_location_photo |
+| FR-03.6b | **Car Damage — No other party:** driving_license_customer + vehicle_registration + vehicle_damage_photo (≥1); optional: vehicle_location_photo |
+| FR-03.7 | **Health required:** citizen_id_card, medical_certificate, itemised_bill, receipt (multiple allowed); optional: discharge_summary |
 
 ---
 
-### FR-05: Optional Incident Description
+### FR-04: AI Data Extraction from Document Photos
+
+After categorisation, the AI MUST extract the following fields per document type:
+
+| Document | Extracted Fields |
+|---|---|
+| **Driving License** | Full name (Thai + English), 8-digit license number, 13-digit citizen ID, date of birth, issue date, expiry date |
+| **Vehicle Registration** | License plate, province, vehicle type, brand, chassis number (17 chars), engine number, model year |
+| **Citizen ID Card** | Full name (Thai + English), 13-digit citizen ID, date of birth, issue date, expiry date |
+| **Receipt** | Hospital name, billing number, total paid, date, itemised list (item + amount per line) |
+| **Medical Certificate** | Patient name, diagnosis, treatment, doctor name, hospital, dates |
+| **Itemised Bill** | Line items with individual amounts and total |
+| **Discharge Summary** | Diagnosis, treatment, admission date, discharge date |
+| **Vehicle Damage Photo** | Damage location, damage description, severity (minor / moderate / severe) |
+| **Vehicle Location Photo** | Location description, road conditions, weather conditions |
+
+**Rules:**
+- FR-04.1: Thai documents use Buddhist Era (พ.ศ.). AI MUST convert to Gregorian by subtracting 543. All stored dates: `YYYY-MM-DD`.
+- FR-04.2: For damage and location photos, extract GPS coordinates from image EXIF if present.
+- FR-04.3: Unreadable fields MUST be stored as `null` — never guessed.
+- FR-04.4: Extracted data MUST be shown to the customer in the chat immediately after upload.
+
+---
+
+### FR-05: Driving License Ownership Confirmation (Car Damage — With Other Party Only)
 
 | ID | Requirement |
 |---|---|
-| FR-05.1 | The bot MUST prompt the user to optionally describe the incident in their own words |
-| FR-05.2 | The bot MUST provide a clearly visible **"Skip"** option (ข้าม) so the user is not blocked |
-| FR-05.3 | If provided, the description MUST be passed as additional context to the AI analysis |
+| FR-05.1 | Ownership confirmation MUST only be triggered when the claim is **"With other party (มีคู่กรณี)"** |
+| FR-05.2 | For a **no-other-party** claim, only the customer's driving license is requested — no ownership question is shown |
+| FR-05.3 | For a **with-other-party** claim, every driving license upload MUST trigger an ownership question |
+| FR-05.4 | The bot MUST present two quick-reply buttons: **"ของฉัน (ฝ่ายเรา)"** / **"คู่กรณี (อีกฝ่าย)"** |
+| FR-05.5 | The same side (customer or other party) cannot be assigned twice |
+| FR-05.6 | If a duplicate attempt is made, the bot MUST reject it with a clear explanation |
 
 ---
 
-### FR-06: Damage Photo Submission
+### FR-06: Data Storage per Claim
 
 | ID | Requirement |
 |---|---|
-| FR-06.1 | The bot MUST accept a photo at the correct step in the conversation flow |
-| FR-06.2 | If a photo is sent outside of the expected step, the bot MUST guide the user back to the correct step |
-| FR-06.3 | The bot MUST display an acknowledgement message immediately after receiving the photo while AI analysis is in progress |
+| FR-06.1 | Each claim MUST have its own dedicated folder on persistent storage, named by Claim ID |
+| FR-06.2 | Every uploaded image MUST be saved as: `{document_category}_{YYYYMMDD_HHMMSS}.{ext}` |
+| FR-06.3 | All AI-extracted data MUST be saved to `extracted_data.json` inside the claim folder |
+| FR-06.4 | Claim metadata (status, memo, document list, response time metrics) MUST be saved to `status.yaml` |
+| FR-06.5 | All stored data MUST survive container restarts via persistent volume |
+
+```
+Folder structure per claim:
+
+{CLAIM_ID}/
+  status.yaml             — status, memo, document list, metrics
+  extracted_data.json     — all AI-extracted fields per document
+  summary.md              — AI-generated claim summary
+  documents/
+    driving_license_20260226_120000.jpg
+    vehicle_registration_20260226_120015.png
+    vehicle_damage_photo_20260226_120030.jpg
+```
 
 ---
 
-### FR-07: AI Damage Analysis
+### FR-07: Claim Submission
 
 | ID | Requirement |
 |---|---|
-| FR-07.1 | The bot MUST retrieve the policyholder's actual **policy document (PDF)** and send it to the AI alongside the damage photo |
-| FR-07.2 | If no policy PDF is available in the system, the bot MUST display a clear error message and NOT attempt partial analysis |
-| FR-07.3 | The AI MUST produce a structured result that includes: policy details extracted from the PDF, damage description, eligibility verdict, repair cost estimate, and next steps |
-| FR-07.4 | The AI result MUST be delivered to the user via a formatted card in LINE |
-| FR-07.5 | If a hotline number is found within the AI result, the card MUST display a **tap-to-call button** |
-| FR-07.6 | On any AI error, the bot MUST deliver a user-friendly error message in Thai and NOT expose technical error details |
+| FR-07.1 | The submit option MUST only appear when ALL required documents are uploaded |
+| FR-07.2 | On submission attempt, the system re-validates completeness and rejects with a missing document list if incomplete |
+| FR-07.3 | **Car Damage — With other party:** driving license (customer) + driving license (other party) + vehicle registration + ≥1 damage photo |
+| FR-07.3b | **Car Damage — No other party:** driving license (customer) + vehicle registration + ≥1 damage photo |
+| FR-07.4 | **Health:** citizen ID card + medical certificate + itemised bill + ≥1 receipt |
+| FR-07.5 | On success, claim status MUST be set to "Submitted" and submission timestamp recorded |
+| FR-07.6 | The bot MUST show the Claim ID to the customer after submission for tracking |
 
 ---
 
-### FR-08: Session Management
+### FR-08: Eligibility Verdict (Car Damage)
 
 | ID | Requirement |
 |---|---|
-| FR-08.1 | Each user MUST have their own independent session that cannot interfere with other users |
-| FR-08.2 | Session data MUST include: current step/state, selected policy details, counterpart answer, incident description |
-| FR-08.3 | After the analysis result is delivered, the session MUST be marked as completed |
-| FR-08.4 | From the "completed" state, the user can restart by sending the trigger phrase again |
+| FR-08.1 | The bot MUST ask whether a counterpart vehicle was involved (quick-reply: "มีคู่กรณี" / "ไม่มีคู่กรณี") |
+| FR-08.2 | After the damage photo is uploaded, the AI MUST produce an eligibility verdict by comparing the photo against the policy |
+| FR-08.3 | Verdict = one of: 🟢 Eligible (recommended), 🟡 Eligible but cost below excess, 🔴 Not eligible |
+| FR-08.4 | Every verdict MUST include: *"This is a preliminary AI assessment. Please confirm with your insurance company."* |
 
----
+**Eligibility logic:**
 
-### FR-09: General / Fallback Behaviour
-
-| ID | Requirement |
-|---|---|
-| FR-09.1 | If a user sends a message that does not match any expected input at any step, the bot MUST respond with a helpful fallback message and remind the user to send the trigger phrase to start |
-| FR-09.2 | All user-facing messages MUST be in Thai |
-
----
-
-## 8. Business Rules
-
-### BR-01: Claim Eligibility Logic by Insurance Class
-
-This is the core business rule that the AI uses to determine eligibility.
-
-| Insurance Class | Single Vehicle Incident (No Counterpart) | Two-Vehicle Incident (With Counterpart) |
+| Insurance Class | No Counterpart | With Counterpart |
 |:---:|:---:|:---:|
-| **ชั้น 1** (Class 1 — Comprehensive) | ✅ Eligible | ✅ Eligible |
-| **ชั้น 2+** (Class 2+ — Semi-comprehensive) | ❌ Not eligible | ✅ Eligible |
-| **ชั้น 2** (Class 2) | ❌ Not eligible | ✅ Eligible |
-| **ชั้น 3+** (Class 3+ — Third-party+) | ❌ Not eligible | ✅ Eligible |
-| **ชั้น 3** (Class 3 — Third-party) | ❌ Not eligible | ✅ Eligible |
-
-> **Simple rule:** Class 1 covers single-vehicle incidents. All other classes require a counterpart (another vehicle involved).
+| ชั้น 1 | ✅ Eligible | ✅ Eligible |
+| ชั้น 2+ / 2 | ❌ Not eligible | ✅ Eligible |
+| ชั้น 3+ / 3 | ❌ Not eligible | ✅ Eligible |
 
 ---
 
-### BR-02: Eligibility Verdict — Three Possible Outcomes
+### FR-09: Reviewer Web Dashboard
 
-The AI MUST produce exactly one of three verdicts:
-
-| Verdict | Colour | Condition |
-|---|:---:|---|
-| 🟢 **Eligible — Recommended to Claim** | Green | Policy covers the incident type AND estimated repair cost exceeds the policy excess amount |
-| 🟡 **Eligible — With Own Expense** | Yellow | Policy covers the incident type BUT estimated repair cost is lower than or close to the excess amount (claiming may not be financially worthwhile) |
-| 🔴 **Not Eligible** | Red | The policy class does NOT cover the incident type (e.g., Class 2+ with no counterpart) |
-
----
-
-### BR-03: Disclaimer Requirement
-
-Every AI analysis result MUST include the following advisory disclaimer:
-
-> *"This is a preliminary AI assessment based on provided documents. Please confirm with your insurance company."*
-
-The result is advisory only and does not constitute a formal claim decision.
+| ID | Requirement |
+|---|---|
+| FR-09.1 | Show all claims; searchable and filterable by status and claim type |
+| FR-09.2 | Clicking a claim shows all uploaded document thumbnails |
+| FR-09.3 | Clicking a thumbnail shows full-size image + AI-extracted data for that document |
+| FR-09.4 | Reviewers can mark each document as **Useful** or **Not Useful** |
+| FR-09.5 | Reviewers can update status: Submitted → Under Review → Pending → Approved → Rejected → Paid |
+| FR-09.6 | Reviewers can add a free-text memo to any claim |
+| FR-09.7 | All changes persist to `status.yaml` immediately |
 
 ---
 
-### BR-04: Policy Document Required
+### FR-10: Manager Web Dashboard
 
-- The AI analysis **cannot proceed** without a policy PDF on file.
-- If the PDF is missing, the bot must refuse the analysis gracefully and direct the user to contact an agent.
+| ID | Requirement |
+|---|---|
+| FR-10.1 | Summary cards: Total claims, Average response time, Accuracy rate, Total paid (CD and H separately) |
+| FR-10.2 | Daily bar chart showing claim counts split by type |
+| FR-10.3 | Filter all data by date range and claim type |
+| FR-10.4 | **Accuracy Rate** = Useful ÷ (Useful + Not Useful) × 100 |
+| FR-10.5 | **Total Paid Amount** — only claims with status "Paid" |
+| FR-10.6 | Clicking a row navigates to the Reviewer dashboard for that claim |
 
 ---
 
-### BR-05: Image Processing for Identity
+### FR-11: Admin Dashboard
 
-- OCR (reading photos) applies to: Thai national ID cards and vehicle license plates only.
-- If the AI cannot determine the document type or extract a value, the bot must ask the user to type the information manually.
+| ID | Requirement |
+|---|---|
+| FR-11.1 | Search and filter application logs by level, category, and date |
+| FR-11.2 | Change log verbosity at runtime without restarting the service |
+| FR-11.3 | View AI token usage: total tokens, total cost, per-operation breakdown, usage over time |
 
 ---
 
-## 9. Non-Functional Requirements
+### FR-12: General Bot Behaviour
+
+| ID | Requirement |
+|---|---|
+| FR-12.1 | The bot MUST respond in **both Thai and English** in every message |
+| FR-12.2 | All AI errors MUST produce user-friendly bilingual messages — no technical errors to customers |
+| FR-12.3 | HTTP 429 rate-limit errors MUST trigger a polite retry prompt |
+| FR-12.4 | If a user messages outside an active session, the bot MUST invite them to start a new claim |
+
+---
+
+## 9. Business Rules
+
+### BR-01: Claim ID Sequence
+- 6-digit, zero-padded (000001, 000042)
+- CD and H have **independent counters**, both persisted across restarts in `sequence.json`
+
+### BR-02: Buddhist Era → Gregorian Date Conversion
+- Thai documents use Buddhist Era (พ.ศ.) — 543 years ahead of Gregorian
+- **Conversion:** Gregorian year = พ.ศ. − 543
+- All stored dates use: `YYYY-MM-DD`
+
+### BR-03: Driving License — One Per Side (With-Other-Party Claims Only)
+- Keys: `driving_license_customer` and `driving_license_other_party`
+- `driving_license_other_party` is required **only** when the claim sub-type is **"With other party (มีคู่กรณี)"**
+- For **"No other party"** claims, only `driving_license_customer` is collected — the bot MUST NOT ask for the counterpart's license
+- A second upload for an already-assigned side MUST be rejected
+
+### BR-04: Multiple Receipts (Health Claims)
+- Multiple medical receipts allowed, stored in `medical_receipts[]` array
+- No upper limit on receipt count
+
+### BR-05: Unknown Documents Are Rejected
+- "unknown" category = rejected; customer told which document types are accepted
+
+### BR-06: Paid Amount Reporting
+- Only claims with status **"Paid"** are counted in paid amount totals in Manager analytics
+
+### BR-07: No Authentication (PoC)
+- All web dashboard endpoints are publicly accessible in PoC scope
+- Authentication required before production
+
+---
+
+## 10. Non-Functional Requirements
 
 ### Performance
 
 | Requirement | Target |
 |---|---|
-| Bot response to text messages | < 3 seconds |
-| OCR result for identity photos | < 10 seconds |
-| AI damage analysis (end-to-end) | < 30 seconds |
-| System uptime | 99% during business hours (8:00–22:00 weekdays) |
+| Text message reply | < 3 seconds |
+| AI OCR for identity photo | < 10 seconds |
+| Document categorisation | < 5 seconds per document |
+| Data extraction per document | < 10 seconds per document |
+| Damage analysis + eligibility verdict | < 30 seconds |
+| Web dashboard page load | < 2 seconds |
 
-### Scalability
+### Storage
 
-| Requirement | Target |
+| Requirement | Description |
 |---|---|
-| Concurrent users supported (PoC) | At least 10 concurrent sessions |
-| Concurrent users supported (Production) | Defined during production planning (Redis + horizontal scaling required) |
+| Persistence | All claim data, sequences, logs, token records survive restarts |
+| Claim structure | Per claim: `status.yaml`, `extracted_data.json`, `summary.md`, `documents/` |
+| Log retention | 7-day retention, max 2,000 entries in memory |
+| Token records | Last 10,000 AI API call records |
 
 ### Security
 
 | Requirement | Description |
 |---|---|
-| Webhook verification | All LINE webhook requests MUST be verified using HMAC-SHA256 signature |
-| Credentials management | All API keys and secrets MUST be stored in environment variables, never in source code |
-| No PII in logs | Personal information (ID numbers, names) MUST NOT be printed in application logs |
-| Policy document handling | Policy PDFs sent to Google Gemini MUST be deleted from Gemini storage immediately after analysis |
+| Webhook verification | HMAC-SHA256 signature verification on all LINE webhook requests |
+| Credentials | API keys in environment variables only — never in source code |
+| PII in logs | National ID numbers and names MUST NOT appear in logs |
+| AI file cleanup | Files uploaded to AI services deleted immediately after analysis |
 
 ### Reliability
 
 | Requirement | Description |
 |---|---|
-| Graceful error handling | All errors MUST produce user-friendly Thai messages; no technical stack traces shown to users |
-| Self-healing deployment | Container MUST restart automatically on crash (`restart: always` in Docker Compose) |
+| Graceful errors | All AI failures return user-friendly messages |
+| Rate limit handling | HTTP 429 triggers a polite retry prompt |
+| Auto-restart | `restart: unless-stopped` in Docker Compose |
 
-### Usability
+---
 
-| Requirement | Description |
+## 11. System Integrations
+
+| External System | Purpose | Method |
+|---|---|---|
+| **LINE Messaging API** | Receive user messages and images; send replies | REST API via `line-bot-sdk` Python v3 |
+| **AI Vision (Gemini / GPT-4 Vision)** | Categorisation, OCR extraction, damage analysis, chat | AI SDK (Python) |
+| **LINE Data API** | Download user-sent images | HTTP GET with Bearer token |
+| **Policy Database** | Verify identity, retrieve coverage | PoC: JSON files. Production: DB or API |
+| **Persistent File Storage** | Claim folders, images, JSON, logs | PoC: Docker volume. Production: Cloud storage (S3/GCS) |
+| **ngrok** | Expose local bot to internet for webhook (PoC only) | Docker container |
+
+---
+
+## 12. Data Requirements
+
+### 12.1 Policy Record — Car Damage
+
+| Field | Example |
 |---|---|
-| Input flexibility | Users can identify themselves by 3 methods (ID, plate, name) plus 2 photo methods |
-| Minimal typing | Quick-reply buttons MUST be used wherever the answer is a fixed choice |
-| Thai language | All user-facing content MUST be in Thai |
+| id_card_number (13-digit) | 3100701443816 |
+| name_th / name_en | สมชาย ใจดี / Somchai Jaidee |
+| phone | 081-234-5678 |
+| policy_number | CD-2026-001234 |
+| vehicle_plate | กก 1234 กรุงเทพมหานคร |
+| vehicle_brand / model / year / color | Toyota Camry 2.5 HV Premium, 2024, White Pearl |
+| coverage_type | ชั้น 1 |
+| coverage_amount (THB) | 1,000,000 |
+| deductible (THB) | 5,000 |
+| start_date / end_date | 2026-01-01 / 2026-12-31 |
+| status | active |
+
+### 12.2 Policy Record — Health
+
+| Field | Example |
+|---|---|
+| id_card_number (13-digit) | 3100701443816 |
+| name_th / name_en | สมชาย ใจดี |
+| plan | Gold Health Plus |
+| coverage_ipd (THB) | 500,000 |
+| coverage_opd (THB) | 30,000 |
+| room_per_night (THB) | 5,000 |
+| start_date / end_date | 2026-01-01 / 2026-12-31 |
+| status | active |
+
+### 12.3 Extracted Data Storage Keys
+
+**Car Damage:**
+
+| Key | Stores |
+|---|---|
+| `driving_license_customer` | Name, license ID, citizen ID, dates |
+| `driving_license_other_party` | Same for the counterpart driver — **present only when sub-type = "With other party"** |
+| `vehicle_registration` | Plate, brand, chassis, engine, model year |
+| `damage_photos[]` | Filename, description, severity, GPS (from EXIF) |
+| `vehicle_location_photo` | Location, road/weather conditions, GPS |
+
+**Health:**
+
+| Key | Stores |
+|---|---|
+| `citizen_id_card` | Name, citizen ID, dates |
+| `medical_certificate` | Patient, diagnosis, treatment, doctor, hospital, dates |
+| `itemized_bill` | Line items with amounts, total |
+| `discharge_summary` | Diagnosis, treatment, admission/discharge dates |
+| `medical_receipts[]` | Hospital, billing number, total paid, date, itemised amounts |
+
+### 12.4 Claim Status Lifecycle
+
+```
+Submitted → Under Review → Pending → Approved → Paid
+                                   ↘
+                                    Rejected
+```
+
+### 12.5 Document Accuracy Tagging (Reviewer)
+
+| Tag | Meaning |
+|---|---|
+| `useful: true` | Document was clear and contributed to the claim decision |
+| `useful: false` | Document was unclear or did not contribute |
+| `useful: null` | Not yet reviewed |
 
 ---
 
-## 10. System Integrations
+## 13. Out of Scope
 
-| External System | Purpose | Integration Method |
+| # | Item | Note |
 |---|---|---|
-| **LINE Messaging API** | Receive user messages; send replies and push messages to users | REST API via official `line-bot-sdk` (Python v3) |
-| **Google Gemini AI** | OCR for ID/plate photos; multi-modal damage analysis with policy PDF | Google Generative AI Python SDK (`google-generativeai`) |
-| **LINE Data API** | Download image files sent by users (damage photos, ID card photos) | Direct HTTP GET with Bearer token via `httpx` |
-| **Policy Database** | Look up policyholder records and retrieve policy PDFs | **Currently:** In-memory mock data. **For Production:** To be replaced with a database (PostgreSQL / MySQL) or an internal policy management API — no changes to the rest of the system required. |
-| **ngrok** | Expose the local bot server to the internet for LINE webhook delivery | Docker container running ngrok tunnel |
+| 1 | Payment processing | Bot submits a claim; payment handled externally |
+| 2 | Real-time policy database connection | PoC uses JSON files; DB integration future phase |
+| 3 | Authentication for web dashboards | Required before production |
+| 4 | Push notifications on status changes | Customer uses Claim ID to track; future feature |
+| 5 | Non-car, non-health insurance types | Travel, life, property — out of scope |
+| 6 | Languages beyond Thai + English | Two languages only |
+| 7 | Mobile-responsive internal dashboards | Desktop browser only in PoC |
+| 8 | Automated approval by AI | AI assists; human approves |
+| 9 | Core insurance system integration | Future phase |
+| 10 | Session persistence across restarts | In-memory only; restart clears sessions |
 
 ---
 
-## 11. Data Requirements
-
-### Policy Record — Minimum Required Fields
-
-The system requires the following fields for each policy record. These fields are used during the conversation and the AI analysis.
-
-| Field | Description | Example |
-|---|---|---|
-| Policy Number | Unique policy identifier | POL-2024-001234 |
-| Title / First Name / Last Name | Policyholder full name | นาย สมชาย เข็มกลัด |
-| National ID (CID) | 13-digit Thai national ID | 7564985348794 |
-| License Plate | Vehicle registration | 1กข1234 |
-| Car Model & Year | Vehicle make, model, year | Toyota Camry 2.5 Hybrid, 2023 |
-| Insurance Type | Policy class | ชั้น 1, ชั้น 2+, ชั้น 3+ |
-| Insurance Company | Insurer name | บริษัท กรุงเทพประกันภัย จำกัด (มหาชน) |
-| Policy Start / End Date | Coverage period | 01/01/2024 – 31/12/2024 |
-| Policy Status | Whether active or expired | active / expired |
-| **Policy Document (PDF)** | **Full policy document in Base64 format — required for AI analysis** | Base64 string |
-
-> **Important:** Without the policy PDF, the AI analysis cannot run. Policy documents should be loaded into the system before go-live.
-
-### Data Storage — Current vs. Production
-
-| Aspect | Current (PoC) | Production Requirement |
-|---|---|---|
-| Policy data | Hardcoded in `mock_data.py` | Relational database or policy API |
-| Policy PDFs | Base64-encoded in memory | Object storage (S3 / GCS) referenced by URL |
-| User sessions | In-memory Python dict | Redis with TTL expiry (e.g., 30 minutes of inactivity) |
-
----
-
-## 12. Out of Scope
-
-The following items are **explicitly outside the scope** of this version (v1.0):
-
-| # | Out of Scope Item | Reason / Note |
-|---|---|---|
-| 1 | Actual claim submission | The bot only checks eligibility; it does not file a claim |
-| 2 | Payment processing | No financial transactions are handled |
-| 3 | Real-time policy database connection | PoC uses static mock data; production DB integration is a v2 item |
-| 4 | Multi-language support (English / other) | Thai only in v1 |
-| 5 | Support for non-vehicle insurance (health, life, etc.) | Car insurance only |
-| 6 | Rich media output (video, sticker) | Text + Flex Message cards only |
-| 7 | Admin dashboard or reporting UI | No management interface in v1 |
-| 8 | proactive notifications (policy expiry reminders, etc.) | Reactive (user-initiated) only |
-| 9 | Human agent handover within LINE | Out-of-scope; customer is given hotline number to call |
-| 10 | Session data persistence across bot restarts | In-memory only; restart clears all sessions |
-
----
-
-## 13. Assumptions & Constraints
+## 14. Assumptions & Constraints
 
 ### Assumptions
 
 | # | Assumption |
 |---|---|
-| A1 | The policyholder's LINE account is registered under their own name/identity |
-| A2 | Each policyholder has a valid LINE account on a smartphone capable of taking photos |
-| A3 | Policy PDFs are available and loadable per customer record before production go-live |
-| A4 | The insurance company has a LINE Official Account and a LINE Messaging API channel configured |
-| A5 | Google Gemini 2.5 Flash API access is available and within budget for expected usage volume |
-| A6 | Policyholders consent to their policy document and damage photos being processed by a third-party AI service (Google Gemini) |
+| A1 | The policyholder has a valid LINE account |
+| A2 | The customer's smartphone camera produces images clear enough for AI OCR |
+| A3 | Policy JSON files are pre-loaded with correct records before go-live |
+| A4 | Customers consent to photos and personal data being processed by a third-party AI service |
+| A5 | The AI Vision model can reliably read standard Thai government documents |
+| A6 | The company has an active LINE Official Account with Messaging API configured |
 
 ### Constraints
 
 | # | Constraint |
 |---|---|
-| C1 | The system runs on a single Docker host — no horizontal scaling in v1 |
-| C2 | The ngrok tunnel URL changes on every restart when using the free tier — LINE webhook must be re-registered each time |
-| C3 | Google Gemini AI response time is not guaranteed; analysis can take 10–30 seconds depending on PDF size |
-| C4 | LINE Messaging API rate limits apply (maximum messages per user per second) |
-| C5 | The free ngrok tier has connection limits; production must use a paid plan or a static public endpoint |
+| C1 | PoC runs on a single Docker host — no horizontal scaling |
+| C2 | ngrok free tier URL changes on restart; LINE webhook must be re-registered manually |
+| C3 | AI extraction time per document up to 10 seconds depending on image complexity |
+| C4 | AI token usage incurs cost; all calls must be tracked and budgeted |
+| C5 | LINE rate limits apply on messages per second |
 
 ---
 
-## 14. Success Metrics (KPIs)
+## 15. Success Metrics (KPIs)
 
 ### Phase 1 — PoC (Months 1–3)
 
 | KPI | Target |
 |---|---|
-| Bot successfully completes end-to-end flow (from trigger to result) | ≥ 95% of sessions with a valid policy + PDF |
-| AI eligibility verdict accuracy (underwriter spot-check sample) | ≥ 90% correct |
-| Average time from trigger to result delivery | < 45 seconds |
-| User able to restart after an error without contacting support | 100% (via trigger phrase reset) |
+| End-to-end submission success rate | ≥ 90% of sessions with valid policy + legible photos |
+| AI document categorisation accuracy | ≥ 95% correct on first attempt |
+| AI data extraction accuracy (name, ID, dates) | ≥ 90% correct values |
+| Average time from trigger to submission | < 5 minutes |
+| Bot recovery after error (cancel + restart) | 100% |
 
 ### Phase 2 — Production (Months 4–6)
 
 | KPI | Target |
 |---|---|
-| Reduction in eligibility inquiry calls to the hotline | ≥ 20% decrease vs. baseline |
-| Monthly Active Users (MAU) of the bot | > 500 unique policyholders |
-| Customer satisfaction score (CSAT) via post-chat survey | ≥ 4.0 / 5.0 |
-| Bot-handled sessions that require no human follow-up | ≥ 70% |
+| Claims with all fields pre-extracted (no manual entry) | ≥ 70% |
+| Reduction in intake errors vs. manual process | ≥ 30% fewer rejected / incomplete submissions |
+| Reviewer time per claim (with dashboard) | ≥ 20% reduction vs. legacy |
+| Customer satisfaction score | ≥ 4.0 / 5.0 stars |
+| Monthly Active Users at 6 months | > 500 unique claimants |
 
 ---
 
-## 15. Known Risks & Mitigations
+## 16. Known Risks & Mitigations
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
-| R1 | AI gives incorrect eligibility verdict, leading to customer dispute | Medium | High | Add disclaimer on every result; run accuracy spot-checks; provide easy escalation to human agent |
-| R2 | Policy PDF not loaded in system for a customer | High (PoC) | High | Require PDF loading as a pre-launch checklist item; bot must fail gracefully with clear "contact agent" message |
-| R3 | Gemini AI API downtime or latency spike | Low | High | Bot must catch errors and ask user to retry; consider fallback to text-only analysis using policy metadata |
-| R4 | Session data lost on container restart (in-memory storage) | High | Low | Acceptable for PoC; users can simply restart the flow; production must use Redis |
-| R5 | ngrok URL changes after restart; LINE webhook breaks | High | Medium | Document re-registration steps; production should use a static domain |
-| R6 | Unauthorised access or fake webhook requests | Low | High | All webhooks are verified using HMAC-SHA256 signature from LINE |
-| R7 | PII (national ID, name) exposed in logs | Medium | High | Review logging configuration before production; avoid printing sensitive fields |
-| R8 | AI processing cost exceeds budget due to high PDF upload volume | Medium | Medium | Monitor Gemini API usage and cost; set up billing alerts; delete uploaded files immediately after use (already implemented) |
+| R1 | AI misreads a critical field (ID number, date), causing incorrect claim | Medium | High | Reviewer verifies all extracted data before approval |
+| R2 | AI gives incorrect eligibility verdict, causing dispute | Medium | High | Mandatory disclaimer on every verdict; reviewer does independent check |
+| R3 | Policy JSON file not pre-loaded with correct records before go-live | High | High | Data loading is a formal launch prerequisite |
+| R4 | AI service downtime or rate limiting during peak hours | Low | High | Retry messages; session state preserved; customer can re-upload |
+| R5 | Session data lost on container restart | High | Low | Acceptable PoC limitation; Redis TTL required for production |
+| R6 | Customer uploads blurry, partial, or wrong document | High | Medium | AI rejects "unknown" with clear re-upload instructions |
+| R7 | PII exposed in application logs | Medium | High | PII-free logging enforced; reviewed before production |
+| R8 | AI token cost exceeds budget | Medium | Medium | Admin dashboard monitors cost; billing alerts; files deleted after use |
+| R9 | Driving license assigned to wrong party | Medium | Medium | Explicit ownership confirmation; reviewer sees both licenses |
+| R10 | ngrok tunnel breaks; LINE webhook stops | High | High | Document re-registration steps; production uses static domain |
 
 ---
 
-## 16. Glossary
+## 17. Glossary
 
 | Term | Definition |
 |---|---|
-| **LINE** | Thailand's most popular instant messaging and social platform, operated by LINE Corporation |
-| **LINE Messaging API** | Developer API that allows businesses to build automated chatbots on LINE |
-| **Flex Message** | A LINE message format that supports rich, structured UI cards (similar to rich cards) |
-| **Quick Reply** | Tappable buttons that appear below a LINE message for fast selection |
-| **Webhook** | A callback URL that LINE uses to forward user messages to the bot server in real time |
-| **AI / Gemini** | Google Gemini 2.5 Flash — the AI model used for OCR and damage analysis |
-| **OCR** | Optical Character Recognition — the process of reading text from an image |
-| **Session** | A temporary record storing where a specific user is within the conversation flow |
-| **State Machine** | The logic that tracks which step of the conversation each user is at and what input is valid next |
-| **Policy (กรมธรรม์)** | The insurance contract document that defines coverage terms, exclusions, and excess amounts |
-| **Excess (ค่าเสียหายส่วนแรก)** | The fixed amount the policyholder must pay out of pocket before the insurance company covers the rest |
-| **ชั้น 1** | Class 1: Comprehensive car insurance — covers all types of damage regardless of counterpart involvement |
-| **ชั้น 2+ / 3+** | Semi-comprehensive / limited coverage — only covers damages involving another vehicle as counterpart |
-| **Counterpart (คู่กรณี)** | The other vehicle (and its driver) involved in a collision with the policyholder's vehicle |
-| **Base64** | A text encoding of binary data (used here to store PDF files as text strings in the database) |
-| **Docker** | A containerisation platform used to package and run the bot application |
-| **ngrok** | A tunnelling service that creates a temporary public HTTPS URL pointing to a local server |
-| **PoC** | Proof of Concept — a working prototype built to validate the core idea before full production investment |
+| **LINE** | Thailand's most popular instant messaging app (50M+ users) |
+| **LINE Messaging API** | Developer API for building automated LINE chatbots |
+| **Flex Message** | Structured UI card format in LINE (rich media card) |
+| **Quick Reply** | Tappable button options shown below a LINE message |
+| **Webhook** | A URL LINE calls in real time to send user events to the bot |
+| **Claim ID** | Unique claim identifier — e.g., CD-20260226-000001 |
+| **OCR** | Optical Character Recognition — AI reading text from a photo |
+| **AI Vision** | An AI model that understands images and extracts structured data |
+| **Document Categorisation** | AI identifying the type of document in a photo |
+| **Data Extraction** | AI reading and structuring specific fields from a document photo |
+| **Session** | Temporary record tracking where a user is in the conversation flow |
+| **Claim Type CD** | Car Damage (เคลมประกันรถยนต์) |
+| **Claim Type H** | Health (เคลมประกันสุขภาพ) |
+| **Policy (กรมธรรม์)** | The insurance contract defining coverage, exclusions, and deductible |
+| **Excess / Deductible (ค่าเสียหายส่วนแรก)** | Amount policyholder pays before insurance covers the rest |
+| **ชั้น 1 / 2+ / 3+** | Thai car insurance classes — Class 1 is most comprehensive |
+| **Counterpart (คู่กรณี)** | The other vehicle and driver involved in the accident |
+| **Buddhist Era (พ.ศ.)** | Thai calendar, 543 years ahead of Gregorian — used on Thai government documents |
+| **EXIF** | Metadata embedded in photos; includes GPS coordinates on most smartphones |
+| **GPS** | Location coordinates extracted from photo EXIF — records accident location |
+| **Docker** | Containerisation platform used to package and run the application |
+| **ngrok** | Tunnelling service creating a public HTTPS URL pointing to a local server |
+| **PoC** | Proof of Concept — a prototype to validate the idea before full production investment |
+| **Reviewer** | Claims staff who reviews documents and updates claim status |
+| **Manager** | Operations manager who monitors overall performance via analytics |
+| **Useful / Not Useful** | Reviewer tag on each document indicating contribution to the claim |
+| **Accuracy Rate** | Useful ÷ (Useful + Not Useful) × 100 |
+| **status.yaml** | Per-claim file: status, memo, document list, processing metrics |
+| **extracted_data.json** | Per-claim file: all AI-extracted field values per document |
+| **sequence.json** | System file persisting claim ID counters across restarts |
 
 ---
 
-*This document is intended for business and technical stakeholders. For implementation details, refer to [tech-spec.md](tech-spec.md).*
+*For implementation details see [tech-spec.md](tech-spec.md) and [document-verify.md](document-verify.md). For the visual user journey see [user-journey.md](user-journey.md).*
