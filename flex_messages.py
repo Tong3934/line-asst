@@ -946,4 +946,161 @@ def create_additional_info_prompt_flex() -> FlexContainer:
     }
     return FlexContainer.from_dict(flex_message)
 
+def create_next_steps_flex() -> FlexContainer:
+    """
+    สร้าง Flex Message ถามขั้นตอนต่อไปหลังวิเคราะห์เสร็จ
+    """
+    flex_message = {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "🤔 ต้องการดำเนินการอย่างไรต่อดีคะ?",
+                    "weight": "bold",
+                    "size": "md",
+                    "margin": "none"
+                },
+                {
+                    "type": "text",
+                    "text": "คุณสามารถเลือกดำเนินการต่อได้จากตัวเลือกด้านล่างนี้ค่ะ",
+                    "size": "xs",
+                    "color": "#666666",
+                    "margin": "xs",
+                    "wrap": True
+                }
+            ],
+            "paddingAll": "20px"
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "message",
+                        "label": "📄 ส่งเคลมทันที",
+                        "text": "ส่งเคลม"
+                    },
+                    "style": "primary",
+                    "color": "#0066FF",
+                    "height": "sm"
+                },
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "message",
+                        "label": "🚗 วิเคราะห์คันถัดไป",
+                        "text": "เช็คสิทธิ์เคลมด่วน"
+                    },
+                    "style": "secondary",
+                    "margin": "sm",
+                    "height": "sm"
+                },
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "message",
+                        "label": "👋 จบการสนทนา",
+                        "text": "จบการสนทนา"
+                    },
+                    "margin": "sm",
+                    "height": "sm"
+                }
+            ],
+            "paddingAll": "15px"
+        }
+    }
+    return FlexContainer.from_dict(flex_message)
 
+def create_claim_submission_instructions_flex() -> FlexContainer:
+    """
+    สร้าง Flex Message แนะนำการส่งเอกสารเคลม
+    """
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "📝 ขั้นตอนการเตรียมส่งเคลม",
+                    "weight": "bold",
+                    "color": "#FFFFFF",
+                    "size": "md"
+                }
+            ],
+            "backgroundColor": "#0066FF",
+            "paddingAll": "15px"
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "กรุณาเตรียมและส่งเอกสารดังต่อไปนี้ค่ะ (ส่งได้หลายไฟล์พร้อมกัน):",
+                    "size": "sm",
+                    "color": "#333333",
+                    "wrap": True
+                },
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "1. 🪪 สำเนาใบขับขี่",
+                            "size": "xs",
+                            "margin": "sm",
+                            "color": "#666666"
+                        },
+                        {
+                            "type": "text",
+                            "text": "2. 📄 สำเนาทะเบียนรถ",
+                            "size": "xs",
+                            "margin": "sm",
+                            "color": "#666666"
+                        },
+                        {
+                            "type": "text",
+                            "text": "3. 📸 รูปความเสียหายมุมกว้าง (ให้เห็นทะเบียนรถ)",
+                            "size": "xs",
+                            "margin": "sm",
+                            "color": "#666666"
+                        },
+                        {
+                            "type": "text",
+                            "text": "4. 📸 รูปคู่กรณี/ที่เกิดเหตุ (ถ้ามี)",
+                            "size": "xs",
+                            "margin": "sm",
+                            "color": "#666666"
+                        }
+                    ],
+                    "margin": "md",
+                    "paddingStart": "10px"
+                }
+            ],
+            "paddingAll": "20px"
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "👇 คุณสามารถทยอยส่งรูปและเอกสารทั้งหมดมาได้เลยค่ะ AI กำลังรอรวบรวมข้อมูลให้คุณ...",
+                    "size": "xxs",
+                    "color": "#999999",
+                    "align": "center",
+                    "wrap": True
+                }
+            ],
+            "paddingAll": "10px"
+        }
+    }
+    return FlexContainer.from_dict(flex_message)

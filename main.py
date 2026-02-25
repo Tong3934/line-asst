@@ -50,7 +50,8 @@ from mock_data import (
 from flex_messages import (
     create_request_info_flex,
     create_additional_info_prompt_flex,
-    create_policy_info_flex
+    create_policy_info_flex,
+    create_claim_submission_instructions_flex
 )
 
 # 5. Claim Engine (AI Logic)
@@ -146,8 +147,44 @@ def handle_text_message(event):
                 )
                 return
 
+            # Case 5: จบการวิเคราะห์ (เลือกว่าจะส่งเคลม หรือ จบ)
+            if current_state == "completed":
+                if text == "ส่งเคลม":
+                    set_state(user_id, "waiting_for_claim_documents", policy_info=session.get("policy_info"))
+                    instructions = create_claim_submission_instructions_flex()
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[
+                                TextMessage(text="🚀 ยินดีประสานงานให้ค่ะ! เรามาเริ่มขั้นตอนการรวบรวมเอกสารกันเลย"),
+                                FlexMessage(alt_text="คำแนะนำการส่งเอกสาร", contents=instructions)
+                            ]
+                        )
+                    )
+                    return
+                elif text == "จบการสนทนา":
+                    reset_session(user_id)
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="🙏 ขอบคุณที่ใช้บริการเช็คสิทธิ์เคลมด่วนค่ะ หากต้องการความช่วยเหลือเพิ่มเติม สามารถพิมพ์หาเราได้ตลอดเวลานะคะ\n\nโชคดีและเดินทางปลอดภัยค่ะ! 🚗✨")]
+                        )
+                    )
+                    return
+
+            # Case 6: ส่งเอกสารเสร็จสิ้น
+            if current_state == "waiting_for_claim_documents" and text == "เสร็จสิ้น":
+                reset_session(user_id)
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text="🙏 ได้รับเอกสารครบถ้วนแล้วค่ะ เจ้าหน้าที่จะรีบดำเนินการตรวจสอบและแจ้งความคืบหน้าให้ทราบโดยเร็วที่สุดนะคะ\n\nขอบคุณที่ใช้บริการค่ะ!")]
+                    )
+                )
+                return
+
             # Fallback for general menu
-            if current_state == "completed" or current_state == "idle":
+            if current_state == "completed" or current_state == "idle" or current_state is None:
                 from linebot.v3.messaging import QuickReply, QuickReplyItem, MessageAction
                 quick_reply = QuickReply(items=[
                     QuickReplyItem(action=MessageAction(label="🚀 เช็คสิทธิ์เคลมด่วน", text="เช็คสิทธิ์เคลมด่วน"))
@@ -222,7 +259,19 @@ def handle_image_message(event):
                         ]
                     )
                 )
-            
+
+            # Case 3: รับเอกสารส่งเคลม (หลายไฟล์)
+            elif current_state == "waiting_for_claim_documents":
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            TextMessage(text="✅ ได้รับเอกสารเรียบร้อยค่ะ!"),
+                            TextMessage(text="หากมีเอกสารหรือรูปถ่ายอื่นเพิ่มเติม สามารถส่งมาต่อได้ทันทีค่ะ หรือพิมพ์ 'เสร็จสิ้น' เมื่อส่งครบแล้ว")
+                        ]
+                    )
+                )
+
             else:
                 line_bot_api.reply_message(
                     ReplyMessageRequest(

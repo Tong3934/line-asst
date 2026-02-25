@@ -18,7 +18,8 @@ from linebot.v3.messaging import (
 
 # Import Flex Messages
 from flex_messages import (
-    create_analysis_result_flex
+    create_analysis_result_flex,
+    create_next_steps_flex
 )
 
 def extract_phone_from_response(text: str) -> Optional[str]:
@@ -244,6 +245,15 @@ def start_claim_analysis(
                     ]
                 )
             )
+
+        # ส่งคำถามขั้นตอนต่อไปต่อเลย
+        next_steps_flex = create_next_steps_flex()
+        line_bot_api.push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=[FlexMessage(alt_text="คุณต้องการดำเนินการอย่างไรต่อ?", contents=next_steps_flex)]
+            )
+        )
 
         user_sessions[user_id]["state"] = "completed"
 
