@@ -193,7 +193,8 @@ def mock_gemini():
     mock_model = MagicMock()
     mock_model.generate_content.return_value = mock_response
 
-    with patch("ai._model", mock_model):
+    with patch("ai._model", mock_model), \
+         patch("config.gemini_model", mock_model):
         yield mock_model
 
 
@@ -234,10 +235,13 @@ def mock_policy_lookup():
     Yields a dict with keys: `by_cid`, `by_plate`, `by_name` — each is a
     MagicMock whose `.return_value` can be adjusted per test.
     """
-    # In v2 the lookups are imported directly into handlers.identity
-    with patch("handlers.identity.search_policies_by_cid",  return_value=[CD_POLICY_ACTIVE_CLASS1]) as p_cid, \
-         patch("handlers.identity.search_policies_by_plate", return_value=CD_POLICY_ACTIVE_CLASS1)  as p_plate, \
-         patch("handlers.identity.search_policies_by_name",  return_value=[CD_POLICY_ACTIVE_CLASS1]) as p_name:
+    # In the current main.py the lookups are imported directly from mock_data
+    with patch("main.search_policies_by_cid",   return_value=[CD_POLICY_ACTIVE_CLASS1]) as p_cid, \
+         patch("main.search_policies_by_plate",  return_value=CD_POLICY_ACTIVE_CLASS1)  as p_plate, \
+         patch("main.search_policies_by_name",   return_value=[CD_POLICY_ACTIVE_CLASS1]) as p_name, \
+         patch("handlers.identity.search_policies_by_cid",  return_value=[CD_POLICY_ACTIVE_CLASS1]), \
+         patch("handlers.identity.search_policies_by_plate", return_value=CD_POLICY_ACTIVE_CLASS1), \
+         patch("handlers.identity.search_policies_by_name",  return_value=[CD_POLICY_ACTIVE_CLASS1]):
         yield {
             "by_cid":   p_cid,
             "by_plate": p_plate,

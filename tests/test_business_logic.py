@@ -581,3 +581,176 @@ class TestExtractedDataStructure:
     def test_cd_no_counterpart_no_other_party_key(self):
         from tests.test_data import EXTRACTED_DATA_CD_NO_COUNTERPART
         assert "driving_license_other_party" not in EXTRACTED_DATA_CD_NO_COUNTERPART
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BL-01 extension  Phone number lookup
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPolicyLookupByPhone:
+    """BL-01 (phone): search_policies_by_phone matches customer phone numbers."""
+
+    def test_known_phone_returns_policies(self):
+        from mock_data import search_policies_by_phone
+        # MOCK_CUSTOMERS["7564985348794"]["phone"] == "0812345678"
+        result = search_policies_by_phone("0812345678")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_known_phone_policy_plate_present(self):
+        from mock_data import search_policies_by_phone
+        result = search_policies_by_phone("0812345678")
+        plates = [p["plate"] for p in result]
+        assert "1กข1234" in plates
+
+    def test_unknown_phone_returns_empty(self):
+        from mock_data import search_policies_by_phone
+        result = search_policies_by_phone("0000000000")
+        assert result == []
+
+    def test_phone_with_dashes_stripped(self):
+        from mock_data import search_policies_by_phone
+        # "081-234-5678" should normalise to "0812345678"
+        result = search_policies_by_phone("081-234-5678")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_second_customer_phone_found(self):
+        from mock_data import search_policies_by_phone
+        # MOCK_CUSTOMERS["9294258136443"]["phone"] == "0898765432"
+        result = search_policies_by_phone("0898765432")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BL-13  extract_info_from_image_with_gemini
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestExtractInfoFromImage:
+    """BL-13: extract_info_from_image_with_gemini — Gemini OCR wrapper."""
+
+    # Uses the real DUMMY_JPEG_BYTES (valid 1×1 JPEG) so PIL.Image.open succeeds.
+
+    def test_id_card_json_parsed_correctly(self):
+        from claim_engine import extract_info_from_image_with_gemini
+        from tests.test_data import DUMMY_JPEG_BYTES
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value.text = (
+            '{"type": "id_card", "value": "3100701443816"}'
+        )
+        result = extract_info_from_image_with_gemini(mock_model, DUMMY_JPEG_BYTES)
+        assert result["type"] == "id_card"
+        assert result["value"] == "3100701443816"
+
+    def test_license_plate_json_parsed_correctly(self):
+        from claim_engine import extract_info_from_image_with_gemini
+        from tests.test_data import DUMMY_JPEG_BYTES
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value.text = (
+            '{"type": "license_plate", "value": "1กข1234"}'
+        )
+        result = extract_info_from_image_with_gemini(mock_model, DUMMY_JPEG_BYTES)
+        assert result["type"] == "license_plate"
+        assert result["value"] == "1กข1234"
+
+    def test_non_json_response_returns_unknown(self):
+        from claim_engine import extract_info_from_image_with_gemini
+        from tests.test_data import DUMMY_JPEG_BYTES
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value.text = "ไม่ทราบประเภทภาพ"
+        result = extract_info_from_image_with_gemini(mock_model, DUMMY_JPEG_BYTES)
+        assert result["type"] == "unknown"
+        assert result["value"] is None
+
+    def test_gemini_exception_returns_unknown(self):
+        from claim_engine import extract_info_from_image_with_gemini
+        from tests.test_data import DUMMY_JPEG_BYTES
+        mock_model = MagicMock()
+        mock_model.generate_content.side_effect = Exception("API timeout")
+        result = extract_info_from_image_with_gemini(mock_model, DUMMY_JPEG_BYTES)
+        assert result["type"] == "unknown"
+        assert result["value"] is None
+
+    def test_json_embedded_in_prose_still_parsed(self):
+        from claim_engine import extract_info_from_image_with_gemini
+        from tests.test_data import DUMMY_JPEG_BYTES
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value.text = (
+            'Here is the result: {"type": "id_card", "value": "1234567890123"} done.'
+        )
+        result = extract_info_from_image_with_gemini(mock_model, DUMMY_JPEG_BYTES)
+        assert result["type"] == "id_card"
+        assert result["value"] == "1234567890123"
+
+    def test_unknown_type_in_response_parsed(self):
+        from claim_engine import extract_info_from_image_with_gemini
+        from tests.test_data import DUMMY_JPEG_BYTES
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value.text = (
+            '{"type": "unknown", "value": null}'
+        )
+        result = extract_info_from_image_with_gemini(mock_model, DUMMY_JPEG_BYTES)
+        assert result["type"] == "unknown"
+        assert result["value"] is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BL-14  Health insurance policy lookup  (search_health_policies_by_cid)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestHealthPolicyLookupByCid:
+    """BL-14: search_health_policies_by_cid — health plan lookup by CID."""
+
+    def test_known_cid_returns_health_policies(self):
+        from mock_data import search_health_policies_by_cid
+        # CID "7564985348794" maps to HPL-2024-100001 (Gold plan)
+        result = search_health_policies_by_cid("7564985348794")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_returned_policy_has_health_fields(self):
+        from mock_data import search_health_policies_by_cid
+        result = search_health_policies_by_cid("7564985348794")
+        policy = result[0]
+        for field in ["policy_number", "cid", "plan", "coverage_ipd", "coverage_opd", "status"]:
+            assert field in policy, f"Missing field: {field}"
+
+    def test_known_cid_policy_number_format(self):
+        from mock_data import search_health_policies_by_cid
+        result = search_health_policies_by_cid("7564985348794")
+        assert result[0]["policy_number"].startswith("HPL-")
+
+    def test_second_customer_cid_returns_health_policy(self):
+        from mock_data import search_health_policies_by_cid
+        # CID "9294258136443" maps to HPL-2024-100002 (Silver plan)
+        result = search_health_policies_by_cid("9294258136443")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+        assert result[0]["plan"] == "Silver"
+
+    def test_unknown_cid_returns_empty_list(self):
+        from mock_data import search_health_policies_by_cid
+        result = search_health_policies_by_cid("0000000000000")
+        assert result == []
+
+    def test_cid_with_dashes_normalised(self):
+        from mock_data import search_health_policies_by_cid
+        # "7-5649-85348-79-4" should normalise to "7564985348794"
+        result = search_health_policies_by_cid("7-5649-85348-79-4")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_result_does_not_contain_cd_policy_fields(self):
+        from mock_data import search_health_policies_by_cid
+        result = search_health_policies_by_cid("7564985348794")
+        # Health policies don't have a "plate" field
+        assert "plate" not in result[0]
+
+    def test_third_customer_expired_health_policy_found(self):
+        from mock_data import search_health_policies_by_cid
+        # CID "2138846447587" maps to HPL-2024-100003 (Bronze, expired)
+        result = search_health_policies_by_cid("2138846447587")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+        assert result[0]["status"] == "expired"

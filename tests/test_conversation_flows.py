@@ -481,7 +481,7 @@ class TestVehicleSelection:
             "state": "waiting_for_vehicle_selection",
             "search_results": [CD_POLICY_ACTIVE_CLASS1, CD_POLICY_ACTIVE_CLASS2PLUS],
         })
-        payload = _text_event(USER_ID_A, "เลือกทะเบียน กก1234")
+        payload = _text_event(USER_ID_A, "เลือกรถ:กก1234")
         resp = post_webhook(app_client, payload)
         assert resp.status_code == 200
         session = get_session(USER_ID_A)
@@ -564,3 +564,161 @@ class TestDamageImageAnalysis:
         })
         resp = post_webhook(app_client, WEBHOOK_IMAGE)
         assert resp.status_code == 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TC-FLOW-13  completed state → ส่งเคลม / จบการสนทนา
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestCompletedStateTransitions:
+    """TC-FLOW-13: Text actions available after AI analysis completes."""
+
+    def test_send_claim_advances_to_waiting_for_claim_documents(
+        self, app_client, set_session, get_session
+    ):
+        """'ส่งเคลม' in completed state must move to waiting_for_claim_documents."""
+        from tests.test_data import _text_event
+        set_session(USER_ID_A, {
+            "state":       "completed",
+            "policy_info": CD_POLICY_ACTIVE_CLASS1,
+        })
+        payload = _text_event(USER_ID_A, "ส่งเคลม")
+        resp = post_webhook(app_client, payload)
+        assert resp.status_code == 200
+        session = get_session(USER_ID_A)
+        assert session.get("state") == "waiting_for_claim_documents"
+
+    def test_end_conversation_resets_session(
+        self, app_client, set_session, get_session
+    ):
+        """'จบการสนทนา' in completed state must reset the session."""
+        from tests.test_data import _text_event
+        set_session(USER_ID_A, {
+            "state":       "completed",
+            "policy_info": CD_POLICY_ACTIVE_CLASS1,
+        })
+        payload = _text_event(USER_ID_A, "จบการสนทนา")
+        resp = post_webhook(app_client, payload)
+        assert resp.status_code == 200
+        session = get_session(USER_ID_A)
+        assert session.get("state") in ("idle", None)
+
+    def test_end_conversation_clears_policy_info(
+        self, app_client, set_session, get_session
+    ):
+        from tests.test_data import _text_event
+        set_session(USER_ID_A, {
+            "state":       "completed",
+            "policy_info": CD_POLICY_ACTIVE_CLASS1,
+        })
+        payload = _text_event(USER_ID_A, "จบการสนทนา")
+        post_webhook(app_client, payload)
+        session = get_session(USER_ID_A)
+        assert "policy_info" not in session
+
+    def test_unrecognised_text_in_completed_does_not_crash(
+        self, app_client, set_session
+    ):
+        from tests.test_data import _text_event
+        set_session(USER_ID_A, {"state": "completed"})
+        payload = _text_event(USER_ID_A, "ข้อความสุ่ม")
+        resp = post_webhook(app_client, payload)
+        assert resp.status_code == 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TC-FLOW-14  waiting_for_claim_documents — document receipt & completion
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestClaimDocumentsCompletion:
+    """TC-FLOW-14: Document upload and 'เสร็จสิ้น' finishes the flow."""
+
+    def test_done_text_resets_session(
+        self, app_client, set_session, get_session
+    ):
+        """'เสร็จสิ้น' in waiting_for_claim_documents resets to idle."""
+        from tests.test_data import _text_event
+        set_session(USER_ID_A, {
+            "state":       "waiting_for_claim_documents",
+            "policy_info": CD_POLICY_ACTIVE_CLASS1,
+        })
+        payload = _text_event(USER_ID_A, "เสร็จสิ้น")
+        resp = post_webhook(app_client, payload)
+        assert resp.status_code == 200
+        session = get_session(USER_ID_A)
+        assert session.get("state") in ("idle", None)
+
+    def test_image_in_claim_documents_state_returns_200(
+        self, app_client, set_session
+    ):
+        """Image sent while collecting claim documents must return 200."""
+        set_session(USER_ID_A, {
+            "state":       "waiting_for_claim_documents",
+            "policy_info": CD_POLICY_ACTIVE_CLASS1,
+        })
+        resp = post_webhook(app_client, WEBHOOK_IMAGE)
+        assert resp.status_code == 200
+
+    def test_other_text_in_claim_documents_returns_200(
+        self, app_client, set_session
+    ):
+        """Any non-terminal text during document collection must return 200."""
+        from tests.test_data import _text_event
+        set_session(USER_ID_A, {"state": "waiting_for_claim_documents"})
+        payload = _text_event(USER_ID_A, "ส่งแล้วนะครับ")
+        resp = post_webhook(app_client, payload)
+        assert resp.status_code == 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TC-FLOW-15  Phone-number lookup path  (9–10 digit text in waiting_for_info)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPhoneNumberLookupFlow:
+    """TC-FLOW-15: 9/10-digit input in waiting_for_info routes to phone lookup."""
+
+    def test_10_digit_phone_returns_200(
+        self, app_client, set_session, mock_policy_lookup
+    ):
+        from tests.test_data import _text_event
+        from unittest.mock import patch
+        set_session(USER_ID_A, {"state": "waiting_for_info"})
+        with patch("main.search_policies_by_phone", return_value=[CD_POLICY_ACTIVE_CLASS1]):
+            payload = _text_event(USER_ID_A, "0812345678")
+            resp = post_webhook(app_client, payload)
+        assert resp.status_code == 200
+
+    def test_9_digit_phone_calls_phone_lookup(
+        self, app_client, set_session, mock_policy_lookup
+    ):
+        from tests.test_data import _text_event
+        from unittest.mock import patch
+        set_session(USER_ID_A, {"state": "waiting_for_info"})
+        with patch("main.search_policies_by_phone", return_value=[]) as mock_phone:
+            payload = _text_event(USER_ID_A, "081234567")  # 9 digits
+            resp = post_webhook(app_client, payload)
+            mock_phone.assert_called_once()
+        assert resp.status_code == 200
+
+    def test_10_digit_phone_not_found_returns_200(
+        self, app_client, set_session, mock_policy_lookup
+    ):
+        from tests.test_data import _text_event
+        from unittest.mock import patch
+        set_session(USER_ID_A, {"state": "waiting_for_info"})
+        with patch("main.search_policies_by_phone", return_value=[]):
+            payload = _text_event(USER_ID_A, "0999999999")
+            resp = post_webhook(app_client, payload)
+        assert resp.status_code == 200
+
+    def test_10_digit_phone_with_found_policy_advances_state(
+        self, app_client, set_session, get_session, mock_policy_lookup
+    ):
+        from tests.test_data import _text_event
+        from unittest.mock import patch
+        set_session(USER_ID_A, {"state": "waiting_for_info"})
+        with patch("main.search_policies_by_phone", return_value=[CD_POLICY_ACTIVE_CLASS1]):
+            payload = _text_event(USER_ID_A, "0812345678")
+            post_webhook(app_client, payload)
+        session = get_session(USER_ID_A)
+        assert session.get("state") != "waiting_for_info"

@@ -238,3 +238,58 @@ class TestDashboardEndpoints:
     def test_health_check_not_dashboard(self, app_client):
         """Sanity: /health is always 200, not part of dashboard group."""
         assert app_client.get("/health").status_code == 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TC-ENDPOINT-06  POST /webhook  (alias of /callback)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestWebhookAlias:
+    """
+    TC-ENDPOINT-06: /webhook must behave identically to /callback —
+    same signature rules, same event routing.
+    """
+
+    def _post(self, client, payload, sig=None):
+        body = make_webhook_body(payload)
+        if sig is None:
+            sig = make_line_signature(body)
+        return client.post(
+            "/webhook",
+            content=body,
+            headers={"Content-Type": "application/json", "X-Line-Signature": sig},
+        )
+
+    def test_valid_signature_returns_200(self, app_client):
+        resp = self._post(app_client, WEBHOOK_TRIGGER_CD)
+        assert resp.status_code == 200
+
+    def test_missing_signature_returns_400(self, app_client):
+        body = make_webhook_body(WEBHOOK_TRIGGER_CD)
+        resp = app_client.post(
+            "/webhook",
+            content=body,
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 400
+
+    def test_invalid_signature_returns_400(self, app_client):
+        body = make_webhook_body(WEBHOOK_TRIGGER_CD)
+        resp = app_client.post(
+            "/webhook",
+            content=body,
+            headers={
+                "Content-Type":     "application/json",
+                "X-Line-Signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            },
+        )
+        assert resp.status_code == 400
+
+    def test_text_event_handled_without_crash(self, app_client):
+        resp = self._post(app_client, WEBHOOK_TRIGGER_MAIN)
+        assert resp.status_code == 200
+
+    def test_empty_events_list_accepted(self, app_client):
+        payload = {"destination": "U_BOT", "events": []}
+        resp = self._post(app_client, payload)
+        assert resp.status_code == 200
