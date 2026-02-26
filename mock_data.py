@@ -197,3 +197,108 @@ def search_policies_by_cid(cid: str) -> List[Dict]:
         if policy_cid == cid_clean:
             results.append(policy)
     return results
+
+
+# ── Health Insurance Mock Data ────────────────────────────────────────────────
+
+HEALTH_POLICIES: List[Dict] = [
+    {
+        "policy_number": "HPL-2024-100001",
+        "title_name": "นาย",
+        "first_name": "สมชาย",
+        "last_name": "เข็มกลัด",
+        "cid": "7564985348794",
+        "phone": "0812345678",
+        "plan": "Gold",
+        "coverage_ipd": 500000,           # บาท/ปี
+        "coverage_opd": 30000,            # บาท/ปี
+        "room_per_night": 3000,           # บาท/คืน
+        "policy_start": "2024-01-01",
+        "policy_end": "2024-12-31",
+        "insurance_company": "บริษัท กรุงเทพประกันสุขภาพ จำกัด",
+        "status": "active",
+    },
+    {
+        "policy_number": "HPL-2024-100002",
+        "title_name": "นาง",
+        "first_name": "สมหญิง",
+        "last_name": "ใจดี",
+        "cid": "9294258136443",
+        "phone": "0898765432",
+        "plan": "Silver",
+        "coverage_ipd": 300000,
+        "coverage_opd": 15000,
+        "room_per_night": 2000,
+        "policy_start": "2024-03-01",
+        "policy_end": "2025-02-28",
+        "insurance_company": "บริษัท กรุงเทพประกันสุขภาพ จำกัด",
+        "status": "active",
+    },
+    {
+        "policy_number": "HPL-2024-100003",
+        "title_name": "นาย",
+        "first_name": "วิชัย",
+        "last_name": "รักษ์ดี",
+        "cid": "2138846447587",
+        "phone": "0861112233",
+        "plan": "Bronze",
+        "coverage_ipd": 100000,
+        "coverage_opd": 5000,
+        "room_per_night": 1000,
+        "policy_start": "2023-07-01",
+        "policy_end": "2024-06-30",
+        "insurance_company": "บริษัท กรุงเทพประกันสุขภาพ จำกัด",
+        "status": "expired",
+    },
+    {
+        "policy_number": "HPL-2024-100004",
+        "title_name": "นางสาว",
+        "first_name": "รัตนา",
+        "last_name": "มีสุข",
+        "cid": "3456789012345",
+        "phone": "0844445555",
+        "plan": "Platinum",
+        "coverage_ipd": 1000000,
+        "coverage_opd": 60000,
+        "room_per_night": 5000,
+        "policy_start": "2024-01-01",
+        "policy_end": "2024-12-31",
+        "insurance_company": "บริษัท กรุงเทพประกันสุขภาพ จำกัด",
+        "status": "active",
+    },
+    {
+        "policy_number": "HPL-2024-100005",
+        "title_name": "นาย",
+        "first_name": "ธนกร",
+        "last_name": "สร้างชาติ",
+        "cid": "4567890123456",
+        "phone": "0855556666",
+        "plan": "Gold",
+        "coverage_ipd": 500000,
+        "coverage_opd": 30000,
+        "room_per_night": 3000,
+        "policy_start": "2024-06-01",
+        "policy_end": "2025-05-31",
+        "insurance_company": "บริษัท กรุงเทพประกันสุขภาพ จำกัด",
+        "status": "active",
+    },
+]
+
+
+def search_health_policies_by_cid(cid: str) -> List[Dict]:
+    """
+    ค้นหากรมธรรม์ประกันสุขภาพจากเลขบัตรประชาชน (CID)
+
+    Args:
+        cid: เลขบัตรประชาชน 13 หลัก (string)
+
+    Returns:
+        List ของกรมธรรม์สุขภาพที่ตรงกับ CID
+    """
+    results = []
+    cid_clean = cid.strip().replace("-", "").replace(" ", "")
+    for policy in HEALTH_POLICIES:
+        policy_cid = str(policy.get("cid", "")).strip().replace("-", "").replace(" ", "")
+        if policy_cid == cid_clean:
+            results.append(policy)
+    return results

@@ -1,24 +1,71 @@
+##############################################################################
+# docker-compose.yml — LINE Insurance Claim Bot  (12-Factor compliant)
+#
+# 12-Factor notes:
+#   II.  Dependencies  — all declared in requirements.txt (no system-level installs)
+#   III. Config        — ALL config injected via env_file / environment (never baked)
+#   VI.  Processes     — stateless; disposability via restart:always
+#   VII. Port binding  — line-bot exposes :8000; ngrok forwards externally
+#   X.   Dev/prod parity — same image for line-bot and mock-chat; profiles=dev toggles
+#   XI.  Logs          — stdout captured by Docker; written to /data/logs via handler
+##############################################################################
+
 services:
+
+  # ── Main Bot Service ────────────────────────────────────────────────────────
   line-bot:
     build: .
     container_name: line-bot
-    env_file:
-      - .env
+    env_file: .env
+    environment:
+      - DATA_DIR=/data
     expose:
       - "8000"
+    volumes:
+      - claim-data:/data          # (12-Factor VIII) persistent volume; survives restarts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     restart: always
 
+  # ── ngrok Tunnel (webhook exposure) ────────────────────────────────────────
   ngrok:
     image: ngrok/ngrok:latest
     container_name: ngrok
-    command:
-      - "http"
-      - "line-bot:8000"
-      - "--log=stdout"
+    command: ["http", "line-bot:8000", "--log=stdout"]
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
     ports:
       - "4040:4040"
     depends_on:
-      - line-bot
+      line-bot:
+        condition: service_healthy
     restart: always
+
+  # ── Mock Chat UI (dev only — enable with: docker compose --profile dev up) ──
+  mock-chat:
+    build: .
+    container_name: mock-chat
+    command: python mock_chat.py
+    env_file: .env
+    environment:
+      - LINE_API_HOST=http://mock-chat:8001
+      - LINE_DATA_API_HOST=http://mock-chat:8001
+      - BOT_URL=http://line-bot:8000
+      - DATA_DIR=/data
+    ports:
+      - "8001:8001"
+    volumes:
+      - claim-data:/data
+    depends_on:
+      - line-bot
+    restart: unless-stopped
+    profiles: [dev]
+
+# ── Named volume (survives container removal; maps to K8s PVC in production) ─
+volumes:
+  claim-data:
+    driver: local
