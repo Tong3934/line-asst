@@ -22,3 +22,6 @@ Pillow>=10.0.0         # already in main requirements.txt, listed for clarity
 
 # ── Optional: nicer output ───────────────────────────────────────
 pytest-sugar>=1.0.0    # progress bar
+
+# ── HTML test reports ────────────────────────────────────────────
+pytest-html>=4.0.0     # self-contained HTML report (test-report/SIT-yyyymmdd-nn/)

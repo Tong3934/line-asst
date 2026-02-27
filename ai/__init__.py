@@ -39,6 +39,7 @@ _model = genai.GenerativeModel(model_name=GEMINI_MODEL)
 def _append_token_record(operation: str, input_tok: int, output_tok: int) -> None:
     """Append one JSONL record to /data/token_records/YYYY-MM.jsonl."""
     import pathlib
+    import constants as _c
     total = input_tok + output_tok
     cost = (input_tok / 1000 * PRICE_INPUT_PER_1K) + (output_tok / 1000 * PRICE_OUTPUT_PER_1K)
     record = {
@@ -51,7 +52,7 @@ def _append_token_record(operation: str, input_tok: int, output_tok: int) -> Non
         "cost_usd": round(cost, 6),
     }
     month = datetime.now(timezone.utc).strftime("%Y-%m")
-    token_dir = pathlib.Path(DATA_DIR) / "token_records"
+    token_dir = pathlib.Path(_c.DATA_DIR) / "token_records"
     token_dir.mkdir(parents=True, exist_ok=True)
     path = token_dir / f"{month}.jsonl"
     with path.open("a", encoding="utf-8") as fh:

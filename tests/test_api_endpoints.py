@@ -55,6 +55,7 @@ def post_webhook(client, payload: dict, secret: str = MOCK_CHANNEL_SECRET):
 # TC-ENDPOINT-01  GET /
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
 class TestRootEndpoint:
     """TC-ENDPOINT-01: Root may return 200 (v1) or 404 (v2) — must never be 5xx."""
 
@@ -81,6 +82,7 @@ class TestRootEndpoint:
 # TC-ENDPOINT-02  GET /health
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
 class TestHealthEndpoint:
     """TC-ENDPOINT-02: /health returns 200 and boolean config flags."""
 
@@ -128,6 +130,8 @@ class TestHealthEndpoint:
 # TC-ENDPOINT-03  POST /webhook — signature verification
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.security
 class TestWebhookSignatureVerification:
     """TC-ENDPOINT-03: Webhook rejects requests with bad / missing signatures."""
 
@@ -176,6 +180,7 @@ class TestWebhookSignatureVerification:
 # TC-ENDPOINT-04  POST /webhook — event routing & response shape
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
 class TestWebhookEventRouting:
     """TC-ENDPOINT-04: Webhook processes events and returns {"status":"ok"}."""
 
@@ -222,6 +227,7 @@ class TestWebhookEventRouting:
 # TC-ENDPOINT-05  Optional web dashboard endpoints (graceful absence check)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
 class TestDashboardEndpoints:
     """
     TC-ENDPOINT-05: Dashboard routes return either 200 (if implemented) or 404
@@ -244,6 +250,7 @@ class TestDashboardEndpoints:
 # TC-ENDPOINT-06  POST /webhook  (alias of /callback)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
 class TestWebhookAlias:
     """
     TC-ENDPOINT-06: /webhook must behave identically to /callback —

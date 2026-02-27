@@ -80,6 +80,8 @@ def post_webhook(client, payload: dict):
 # TC-FLOW-01  Trigger detection — Car Damage keywords
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.flow_cd
 class TestTriggerDetection:
     """TC-FLOW-01/02: FR-01.2–FR-01.5 — Claim type detection from free text."""
 
@@ -116,6 +118,8 @@ class TestTriggerDetection:
 # TC-FLOW-02  Policy verification — typed CID
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.flow_cd
 class TestPolicyVerificationByText:
     """TC-FLOW-02: FR-02.2 — Policy lookup by 13-digit typed CID."""
 
@@ -169,6 +173,8 @@ class TestPolicyVerificationByText:
 # TC-FLOW-03  Policy verification — image OCR
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.flow_cd
 class TestPolicyVerificationByImage:
     """TC-FLOW-03: FR-02.3 — Policy lookup by OCR from uploaded ID/licence photo."""
 
@@ -203,6 +209,8 @@ class TestPolicyVerificationByImage:
 # TC-FLOW-04  Counterpart selection
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.flow_cd
 class TestCounterpartSelection:
     """TC-FLOW-04: FR-08.1 — Has/no counterpart question and state transition."""
 
@@ -219,8 +227,9 @@ class TestCounterpartSelection:
         resp = post_webhook(app_client, WEBHOOK_COUNTERPART_YES)
         assert resp.status_code == 200
         session = get_session(USER_ID_A)
-        # State should advance away from waiting_for_counterpart
-        assert session.get("state") != "waiting_for_counterpart"
+        # v1 main.py transitions counterpart → waiting_for_image (v2: uploading_documents)
+        assert session.get("state") == "waiting_for_image"
+        assert session.get("has_counterpart") == "มีคู่กรณี"
 
     def test_no_counterpart_advances_state(
         self, app_client, set_session, get_session
@@ -235,7 +244,9 @@ class TestCounterpartSelection:
         resp = post_webhook(app_client, WEBHOOK_COUNTERPART_NO)
         assert resp.status_code == 200
         session = get_session(USER_ID_A)
-        assert session.get("state") != "waiting_for_counterpart"
+        # v1 main.py transitions counterpart → waiting_for_image (v2: uploading_documents)
+        assert session.get("state") == "waiting_for_image"
+        assert session.get("has_counterpart") == "ไม่มีคู่กรณี"
 
     def test_invalid_answer_keeps_state_or_re_prompts(
         self, app_client, set_session, get_session
@@ -258,6 +269,8 @@ class TestCounterpartSelection:
 # TC-FLOW-05  Document upload — categorisation & extraction  (v2 target)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.flow_cd
 class TestDocumentUpload:
     """
     TC-FLOW-05: FR-03, FR-04 — Document categorisation and extraction.
@@ -309,6 +322,8 @@ class TestDocumentUpload:
 # TC-FLOW-06  Ownership confirmation  (CD with counterpart)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.flow_cd
 class TestOwnershipConfirmation:
     """TC-FLOW-06: FR-05 — Driving licence ownership assignment."""
 
@@ -355,6 +370,8 @@ class TestOwnershipConfirmation:
 # TC-FLOW-07  Claim submission
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.flow_cd
 class TestClaimSubmission:
     """TC-FLOW-07: FR-07 — Claim submission triggered by 'ส่งคำร้อง'."""
 
@@ -412,6 +429,7 @@ class TestClaimSubmission:
 # TC-FLOW-08  Cancel / Restart from any state
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
 class TestCancelAndRestart:
     """TC-FLOW-08: FR-01.8 — Cancel/restart resets session to idle."""
 
@@ -452,6 +470,7 @@ class TestCancelAndRestart:
 # TC-FLOW-09  submitted state — any message shows Claim ID reminder
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
 class TestSubmittedState:
     """TC-FLOW-09: Messages in 'submitted' state show Claim ID reminder."""
 
@@ -470,6 +489,8 @@ class TestSubmittedState:
 # TC-FLOW-10  Vehicle selection (multiple policies)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.flow_cd
 class TestVehicleSelection:
     """TC-FLOW-10: Multiple policies in CID search trigger vehicle-selection."""
 
@@ -485,7 +506,8 @@ class TestVehicleSelection:
         resp = post_webhook(app_client, payload)
         assert resp.status_code == 200
         session = get_session(USER_ID_A)
-        assert session.get("state") != "waiting_for_vehicle_selection"
+        # After valid plate selection, must advance to waiting_for_counterpart (CD)
+        assert session.get("state") == "waiting_for_counterpart"
 
     def test_invalid_plate_selection_returns_200(
         self, app_client, set_session
@@ -504,6 +526,8 @@ class TestVehicleSelection:
 # TC-FLOW-11  Additional info step (v1 flow)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.flow_cd
 class TestAdditionalInfoStep:
     """TC-FLOW-11: Free-text additional info step (v1 waiting_for_additional_info)."""
 
@@ -535,6 +559,8 @@ class TestAdditionalInfoStep:
 # TC-FLOW-12  Damage image analysis (v1 flow — waiting_for_image)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.flow_cd
 class TestDamageImageAnalysis:
     """TC-FLOW-12: Damage photo in waiting_for_image state triggers AI analysis."""
 
@@ -570,6 +596,7 @@ class TestDamageImageAnalysis:
 # TC-FLOW-13  completed state → ส่งเคลม / จบการสนทนา
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
 class TestCompletedStateTransitions:
     """TC-FLOW-13: Text actions available after AI analysis completes."""
 
@@ -630,6 +657,7 @@ class TestCompletedStateTransitions:
 # TC-FLOW-14  waiting_for_claim_documents — document receipt & completion
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
 class TestClaimDocumentsCompletion:
     """TC-FLOW-14: Document upload and 'เสร็จสิ้น' finishes the flow."""
 
@@ -674,6 +702,8 @@ class TestClaimDocumentsCompletion:
 # TC-FLOW-15  Phone-number lookup path  (9–10 digit text in waiting_for_info)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.integration
+@pytest.mark.flow_cd
 class TestPhoneNumberLookupFlow:
     """TC-FLOW-15: 9/10-digit input in waiting_for_info routes to phone lookup."""
 

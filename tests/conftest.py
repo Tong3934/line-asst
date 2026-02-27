@@ -106,7 +106,17 @@ def main_module(_stub_genai, _set_env_vars):
 def app_client(fastapi_app, mock_line_api, mock_gemini, mock_image_download):
     """
     FastAPI TestClient with all side-effecting dependencies mocked.
-    Each test gets a fresh client (function scope).
+    Exceptions propagate so handler bugs are not silently swallowed.
+    """
+    with TestClient(fastapi_app) as client:
+        yield client
+
+
+@pytest.fixture()
+def lenient_client(fastapi_app, mock_line_api, mock_gemini, mock_image_download):
+    """
+    TestClient that suppresses server exceptions — use ONLY in security/
+    malformed-payload tests that intentionally probe 4xx / 5xx status codes.
     """
     with TestClient(fastapi_app, raise_server_exceptions=False) as client:
         yield client
@@ -129,10 +139,11 @@ def clean_sessions(main_module):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture()
-def tmp_data_dir(tmp_path):
+def tmp_data_dir(tmp_path, monkeypatch):
     """
     A fresh temp directory acting as DATA_DIR.
     Creates the standard sub-folders expected by storage helpers.
+    Also patches DATA_DIR env var so storage helpers resolve to this directory.
     """
     claims_dir = tmp_path / "claims"
     claims_dir.mkdir()
@@ -141,6 +152,8 @@ def tmp_data_dir(tmp_path):
     # Initialise sequence file
     seq = tmp_path / "sequence.json"
     seq.write_text(json.dumps({"CD": 0, "H": 0}))
+    # Ensure storage modules resolve to this directory, not the session-level tmp
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
     return tmp_path
 
 

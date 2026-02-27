@@ -63,6 +63,7 @@ def valid_request(payload: dict):
 # SEC-01  HMAC-SHA256 verification
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.security
 class TestHmacVerification:
     """SEC-01: Every webhook POST must carry a valid HMAC-SHA256 signature."""
 
@@ -109,6 +110,7 @@ class TestHmacVerification:
 # SEC-02  Missing / absent headers
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.security
 class TestMissingHeaders:
     """SEC-02: Missing X-Line-Signature header must be rejected immediately."""
 
@@ -139,6 +141,7 @@ class TestMissingHeaders:
 # SEC-03  Malformed / edge-case payloads
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.security
 class TestMalformedPayloads:
     """SEC-03: Server must handle unexpected bodies without crashing (no 500)."""
 
@@ -150,36 +153,38 @@ class TestMalformedPayloads:
             headers={"Content-Type": "application/json", "X-Line-Signature": sig},
         )
 
-    def test_empty_body_with_valid_sig(self, app_client):
-        resp = self._post_with_correct_sig(app_client, b"")
+    def test_empty_body_with_valid_sig(self, lenient_client):
+        resp = self._post_with_correct_sig(lenient_client, b"")
         # Empty body is syntactically invalid JSON — should be 400, not 500
-        assert resp.status_code in (400, 422, 500)   # 500 acceptable only if caught
+        assert resp.status_code < 500, f"Empty body caused 5xx: {resp.status_code}"
 
-    def test_not_json_body(self, app_client):
+    def test_not_json_body(self, lenient_client):
         body = b"this is not json"
-        resp = self._post_with_correct_sig(app_client, body)
-        assert resp.status_code in (400, 422, 500)
+        resp = self._post_with_correct_sig(lenient_client, body)
+        assert resp.status_code < 500, f"Non-JSON caused 5xx: {resp.status_code}"
 
-    def test_json_missing_events_key(self, app_client):
-        """Payload without 'events' list must not crash."""
+    def test_json_missing_events_key(self, lenient_client):
+        """Payload without 'events' list — LINE SDK KeyError is now caught and returns 400."""
         payload = {"destination": "U_BOT"}
         body = json.dumps(payload).encode()
-        resp = self._post_with_correct_sig(app_client, body)
-        assert resp.status_code in (200, 400, 422, 500)
+        resp = self._post_with_correct_sig(lenient_client, body)
+        assert resp.status_code < 500, f"Missing 'events' caused 5xx: {resp.status_code}"
 
-    def test_oversized_payload_does_not_hang(self, app_client):
+
+    def test_oversized_payload_does_not_hang(self, lenient_client):
         """10 MB body with correct sig — server must respond within test timeout."""
         big_body = json.dumps(
             {"destination": "U_BOT", "events": [], "padding": "x" * 10_000_000}
         ).encode()
-        resp = self._post_with_correct_sig(app_client, big_body)
-        assert resp.status_code in (200, 400, 413, 422, 500)
+        resp = self._post_with_correct_sig(lenient_client, big_body)
+        assert resp.status_code in (200, 400, 413, 422)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SEC-04  PII not exposed in error responses
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.security
 class TestPiiNotExposedInErrors:
     """SEC-04: Error response bodies must not echo back CID numbers or names."""
 
@@ -223,6 +228,7 @@ class TestPiiNotExposedInErrors:
 # SEC-05  Idempotency — duplicate webhook events
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.security
 class TestIdempotency:
     """
     SEC-05: LINE may deliver the same event twice.
@@ -242,6 +248,7 @@ class TestIdempotency:
 # SEC-06  Environment variable sensitivity
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.security
 class TestEnvironmentSecurity:
     """SEC-06: Sensitive env values must not appear in any HTTP response."""
 

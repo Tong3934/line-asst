@@ -65,6 +65,7 @@ from tests.test_data import (
 # BL-01  Policy lookup
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 class TestPolicyLookup:
     """BL-01: mock_data lookup functions behave per spec."""
 
@@ -84,11 +85,9 @@ class TestPolicyLookup:
     def test_lookup_by_plate_found(self):
         from mock_data import search_policies_by_plate
         result = search_policies_by_plate("1กข1234")
-        # Returns single dict or falsy — must not be an empty list or None crash
-        assert result is not None or result is None   # either found or None
-        # If found, must have a plate field
-        if result:
-            assert "plate" in result or result is not None
+        # Returns a dict when found — must not be falsy and must have a plate key
+        assert result is not None
+        assert "plate" in result
 
     def test_lookup_by_plate_not_found_returns_falsy(self):
         from mock_data import search_policies_by_plate
@@ -128,6 +127,7 @@ class TestPolicyLookup:
 CLAIM_ID_RE = re.compile(r'^(CD|H)-\d{8}-\d{6}$')
 
 
+@pytest.mark.unit
 class TestClaimIdFormat:
     """BL-02: Claim IDs must match {CD|H}-YYYYMMDD-NNNNNN."""
 
@@ -155,6 +155,7 @@ class TestClaimIdFormat:
 # BL-03  Claim ID sequence generation (sequence.json)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 class TestClaimIdSequence:
     """BL-03: Sequence counter increments correctly and formats Claim ID."""
 
@@ -178,11 +179,25 @@ class TestClaimIdSequence:
         assert self._generate_claim_id("CD", 999999, "20260226") == "CD-20260226-999999"
 
     def test_cd_and_h_counters_are_independent(self):
-        """CD sequence and H sequence must be managed separately."""
-        seq = {"CD": 5, "H": 3}
-        seq["CD"] += 1
-        assert seq["CD"] == 6
-        assert seq["H"] == 3   # H counter unchanged
+        """CD sequence and H sequence must be managed separately by next_claim_id()."""
+        import json
+        import tempfile, os
+        from storage.sequence import next_claim_id
+        with tempfile.TemporaryDirectory() as d:
+            seq_path = os.path.join(d, "sequence.json")
+            with open(seq_path, "w") as f:
+                json.dump({"CD": 0, "H": 0}, f)
+            with patch("storage.sequence.DATA_DIR", d):
+                id_cd1 = next_claim_id("CD")
+                id_cd2 = next_claim_id("CD")
+                id_h1  = next_claim_id("H")
+            # CD counter should be at 2, H at 1
+            assert id_cd1.startswith("CD-")
+            assert id_cd2.startswith("CD-")
+            assert id_h1.startswith("H-")
+            # The sequence numbers must differ
+            assert id_cd1 != id_cd2
+            assert id_h1 != id_cd1
 
     def test_sequence_json_structure(self):
         """sequence.json must deserialise to a dict with CD and H integer keys."""
@@ -209,6 +224,7 @@ def _convert_be_to_gregorian(value: str) -> str:
     return "-".join(parts)
 
 
+@pytest.mark.unit
 class TestBuddhistEraConversion:
     """BL-04: Thai Buddhist Era year → Gregorian."""
 
@@ -245,6 +261,7 @@ def _detect_claim_type(text: str):
     return None
 
 
+@pytest.mark.unit
 class TestKeywordDetection:
     """BL-05: FR-01.3/FR-01.4 — Keyword-based claim type detection."""
 
@@ -288,6 +305,7 @@ def _is_eligible(coverage_type: str, has_counterpart: str) -> bool:
     return has_counterpart == "มีคู่กรณี"
 
 
+@pytest.mark.unit
 class TestEligibilityLogic:
     """BL-06: FR-08.3 — Eligibility verdicts per insurance class × counterpart."""
 
@@ -320,6 +338,7 @@ def _check_missing_docs(uploaded: dict, required: list) -> list:
     return [doc for doc in required if doc not in uploaded]
 
 
+@pytest.mark.unit
 class TestRequiredDocumentCompleteness:
     """BL-07: FR-07.3/FR-07.4 — completeness check per claim type."""
 
@@ -383,6 +402,7 @@ def _allowed_next(current_status: str) -> list:
     return VALID_STATUS_TRANSITIONS.get(current_status, [])
 
 
+@pytest.mark.unit
 class TestClaimStatusLifecycle:
     """BL-08: §5.7 — Status transition rules enforced."""
 
@@ -421,6 +441,7 @@ class TestClaimStatusLifecycle:
 # BL-09  Phone number extraction from Gemini response text
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 class TestPhoneNumberExtraction:
     """BL-09: extract_phone_from_response — Thai phone pattern extractor in main.py."""
 
@@ -455,6 +476,7 @@ class TestPhoneNumberExtraction:
 # BL-10  Webhook HMAC-SHA256 signature computation
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 class TestWebhookSignatureComputation:
     """BL-10: Verify our signature helper matches the LINE spec."""
 
@@ -491,13 +513,17 @@ class TestWebhookSignatureComputation:
 # BL-11  Document category validation
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 class TestDocumentCategoryValidation:
     """BL-11: FR-03.2/FR-03.3 — Only the 9 known categories are accepted."""
 
     @pytest.mark.parametrize("category", VALID_DOCUMENT_CATEGORIES)
     def test_valid_categories_accepted(self, category):
+        # Verify each category is recognised as valid by the production constants
+        from constants import VALID_CATEGORIES
+        assert category in VALID_CATEGORIES
         assert category != "unknown"
-        assert category in VALID_DOCUMENT_CATEGORIES
+
 
     def test_unknown_category_is_rejected(self):
         assert "unknown" not in VALID_DOCUMENT_CATEGORIES
@@ -527,6 +553,7 @@ class TestDocumentCategoryValidation:
 # BL-12  Extracted data structure integrity
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 class TestExtractedDataStructure:
     """BL-12: Validate the shape of AI-extracted data stubs."""
 
@@ -587,6 +614,7 @@ class TestExtractedDataStructure:
 # BL-01 extension  Phone number lookup
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 class TestPolicyLookupByPhone:
     """BL-01 (phone): search_policies_by_phone matches customer phone numbers."""
 
@@ -627,6 +655,7 @@ class TestPolicyLookupByPhone:
 # BL-13  extract_info_from_image_with_gemini
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 class TestExtractInfoFromImage:
     """BL-13: extract_info_from_image_with_gemini — Gemini OCR wrapper."""
 
@@ -699,6 +728,7 @@ class TestExtractInfoFromImage:
 # BL-14  Health insurance policy lookup  (search_health_policies_by_cid)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.unit
 class TestHealthPolicyLookupByCid:
     """BL-14: search_health_policies_by_cid — health plan lookup by CID."""
 
