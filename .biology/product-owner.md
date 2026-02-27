@@ -140,53 +140,70 @@ My job is to make your job faster and your documents better.
 
 | File | Version | Lines | Status | Purpose |
 |---|:---:|:---:|---|---|
-| `document/business-requirement.md` | 2.0 | 669 | Draft | Single source of truth for all business requirements — FR, BR, NFR, KPIs, risks, glossary |
-| `document/user-journey.md` | 2.0 | 514 | Draft | Visual journeys for all 4 roles; 9 Mermaid diagrams |
+| `document/business-requirement.md` | 2.1 | 752 | Draft | Single source of truth for all business requirements — FR, BR, NFR, KPIs, risks, glossary; updated for handlers/ and storage/ modules |
+| `document/user-journey.md` | 2.1 | 549 | Draft | Visual journeys for all 4 roles; corrected state machine with all new states |
 | `document/tech-spec.md` | 1.x | 592 | Reference | Original technical spec for the LINE bot (pre-merge) — do not edit; use as source reference |
-| `document/document-verify.md` | 1.x | 925 | Reference | Full technical spec for the document upload / AI extraction / web dashboard system — do not edit; already merged into BRD v2.0 |
-| `main.py` | — | 789 | Built & running | FastAPI LINE bot: webhook handler, Gemini integration, session state, eligibility logic |
-| `flex_messages.py` | — | ~900 | Built & running | All LINE Flex Message card builders |
-| `mock_data.py` | — | 199 | Built & running | In-memory policy database (CD + H policies) used for PoC lookup |
-| `requirements.txt` | — | 12 | Current | Python dependencies |
+| `document/document-verify.md` | 1.x | 925 | Reference | Full technical spec for the document upload / AI extraction / web dashboard system — do not edit; already merged into BRD v2.1 |
+| `main.py` | 2.0 | 359 | Built & running | FastAPI LINE bot: webhook handler, legacy flow still running; `handlers/` not yet wired |
+| `handlers/trigger.py` | — | 160 | Built | Claim type detection, Claim ID generation, session init |
+| `handlers/identity.py` | — | 247 | Built | Policy verification (CD + H), multi-policy vehicle selection |
+| `handlers/documents.py` | — | 326 | Built | Document upload loop, AI categorise+extract, ownership confirmation |
+| `handlers/submit.py` | — | 121 | Built | Claim completeness validation, submission, summary.md generation |
+| `storage/sequence.py` | — | 60 | Built | Thread-safe file-backed Claim ID counter (sequence.json) |
+| `storage/claim_store.py` | — | 224 | Built | status.yaml + extracted_data.json read/write |
+| `storage/document_store.py` | — | — | Built | Image file save to claim/documents/ folder |
+| `ai/__init__.py` | — | 88 | Built | Shared Gemini client + token tracking (JSONL per month) |
+| `ai/categorise.py` | — | 61 | Built | Document categorisation (9 categories + unknown) |
+| `ai/extract.py` | — | — | Built | Field extraction per document category |
+| `ai/ocr.py` | — | — | Built | Identity OCR — CID, license plate from photo |
+| `ai/analyse_damage.py` | — | — | Built | Eligibility verdict (insurance class × counterpart matrix) |
+| `constants.py` | — | 111 | Built | App-wide constants: keywords, REQUIRED_DOCS, VALID_TRANSITIONS, pricing |
+| `session_manager.py` | — | 86 | Built | In-memory user_sessions dict, legacy helper functions |
+| `claim_engine.py` | — | — | Built | AI eligibility analysis, phone extraction |
+| `flex_messages.py` | — | ~900 | Built | All LINE Flex Message card builders |
+| `mock_data.py` | — | large | Built | Policy database (CD + H policies) for PoC lookup |
+| `dashboards/reviewer.html` | — | — | HTML ready | Reviewer web dashboard — not yet served by FastAPI |
+| `dashboards/manager.html` | — | — | HTML ready | Manager web dashboard — not yet served by FastAPI |
+| `dashboards/admin.html` | — | — | HTML ready | Admin web dashboard — not yet served by FastAPI |
+| `requirements.txt` | — | — | Current | Python dependencies |
 | `docker-compose.yml` | — | — | Working | Multi-container setup: app + ngrok |
 | `dockerfile` | — | — | Working | Python 3.11 FastAPI container |
 | `ngrok.py` / `nginx.conf` | — | — | Working | Tunnel and reverse proxy config |
-| `.biology/product-owner.md` | 1.0 | — | This file | AI PO identity + project handoff |
+| `.biology/product-owner.md` | 1.1 | — | This file | AI PO identity + project handoff |
 
 ---
 
 ## H2. Build Status — What Is Real vs. What Is Designed
 
-### ✅ Built and Running (in `main.py` + `flex_messages.py`)
+### ✅ Built and Running (core infrastructure)
 
 | Feature | Details |
 |---|---|
-| LINE webhook receive | HMAC-SHA256 verified, FastAPI async handler |
+| LINE webhook receive | HMAC-SHA256 verified, FastAPI async handler; malformed → HTTP 400 |
 | Session management | In-memory `user_sessions` dict keyed by LINE user ID |
-| Claim type detection | Keyword matching for CD (car) and H (health) |
-| Policy lookup | `mock_data.py` — JSON lookup by 13-digit national ID |
-| Identity OCR | Gemini reads ID photo, extracts citizen ID number |
-| Damage photo analysis | Gemini analyses car damage photo, produces eligibility verdict |
-| Eligibility logic | Car insurance class × counterpart presence matrix (FR-08) |
-| Flex Message UI | Welcome card, policy info card, analysis result card, error card, input method card |
-| Cancel / restart | ยกเลิก / cancel / เริ่มใหม่ / restart handled at any point |
+| Claim type detection | `handlers/trigger.py` — CD_KEYWORDS, H_KEYWORDS, TRIGGER_KEYWORDS |
+| Claim ID generation | `storage/sequence.py` — thread-safe, file-backed, survives restarts |
+| Policy lookup — CD | `mock_data.py` — by CID, plate, name |
+| Policy lookup — H | `mock_data.py` — `search_health_policies_by_cid` (separate DB) |
+| Identity OCR | `ai/ocr.py` — Gemini reads ID photo, returns CID / plate |
+| Document categorisation | `ai/categorise.py` — 9 known categories + unknown |
+| AI field extraction | `ai/extract.py` — structured JSON per document type |
+| Persistent claim storage | `storage/claim_store.py` + `storage/document_store.py` — status.yaml, extracted_data.json, documents/ |
+| Driving license ownership | `handlers/documents.py` — ของฉัน / คู่กรณี with duplicate rejection |
+| Claim submission | `handlers/submit.py` — validates completeness, marks Submitted, generates summary.md |
+| AI token tracking | `ai/__init__.py` — JSONL per month in `/data/token_records/` |
+| Eligibility verdict (CD) | `claim_engine.py` / `ai/analyse_damage.py` — insurance class × counterpart matrix |
+| Flex Message UI | All cards built in `flex_messages.py` incl. claim-type selector, health policy card, ownership Q |
+| Cancel / restart | ยกเลิก / cancel / เริ่มใหม่ / restart in CANCEL_KEYWORDS |
 | Health check endpoint | `GET /health` |
+| Dashboard HTML | `dashboards/reviewer.html`, `manager.html`, `admin.html` exist |
 
-### 📄 Designed Only — Not Yet Built (from `document-verify.md` merged into BRD v2.0)
+### ⚠️ Built but NOT Yet Wired into Production Request Routing
 
-| Feature | Notes |
-|---|---|
-| Claim ID generation & `sequence.json` | FR-01.6, FR-01.7 — counter persistence not implemented |
-| Document upload pipeline (categorise → extract) | FR-03, FR-04 — only damage analysis exists today |
-| Driving license ownership confirmation | FR-05 — quick-reply "ของฉัน / คู่กรณี" flow |
-| Persistent claim folder storage | FR-06 — `status.yaml`, `extracted_data.json`, `documents/` per claim |
-| Claim submission & status lifecycle | FR-07 — Submitted → Under Review → Paid flow |
-| Reviewer web dashboard (`/reviewer`) | FR-09 — full CRUD on claims + document tagging |
-| Manager web dashboard (`/manager`) | FR-10 — analytics, accuracy rate, paid totals |
-| Admin dashboard (`/admin`) | FR-11 — log search, token cost tracking |
-| Multiple receipts loop (Health) | BR-04 |
-| GPS extraction from EXIF | FR-04.2 |
-| AI token usage tracking | FR-11.3 |
+| Feature | Status | Notes |
+|---|---|---|
+| `handlers/` in `main.py` | ❌ Not wired | `main.py` still uses legacy flow; `handlers/` called via tests only |
+| FastAPI routes for dashboards | ❌ Not added | `/reviewer`, `/manager`, `/admin` routes not in `main.py` yet |
 
 ---
 

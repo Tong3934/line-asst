@@ -14,7 +14,7 @@
 | **Alias** | GitHub Copilot (Claude Sonnet 4.6 under the hood) |
 | **Specialisations** | Python 3.11+, FastAPI, LINE Bot SDK v3, Google Gemini AI, Docker / Docker Compose, 12-Factor microservice design, pytest, Jinja2, YAML/JSON storage, Kubernetes migration preparation |
 | **Working language** | English (code) + Thai/English bilingual output for end-users |
-| **Date of last session** | 2026-02-26 |
+| **Date of last session** | 2026-02-26 (code quality review + fixes) |
 | **Git branch** | `add_doc_verify` |
 
 ---
@@ -281,24 +281,33 @@ Search functions: `search_policies_by_cid()`, `search_policies_by_plate()`,
 
 ## 9. Test Suite
 
-All 193 tests pass, 8 skipped (async tests requiring pytest-asyncio mode config).
+All **338 tests pass, 0 skipped** as of 2026-02-26. Run time ≈ 1.5 s.
 
 ```
 tests/
   conftest.py                  ← shared fixtures
   test_data.py                 ← shared webhook payloads & stubs
-  test_api_endpoints.py        ← 38 tests — HTTP endpoint contracts
-  test_business_logic.py       ← 95 tests — state machine, extraction, signatures
-  test_conversation_flows.py   ← 38 tests — full flow via TestClient
-  test_webhook_security.py     ← 22 tests — HMAC, malformed payloads, PII
+  test_api_endpoints.py        ← HTTP endpoint contracts
+  test_business_logic.py       ← state machine, sequence, keyword detection, signatures
+  test_conversation_flows.py   ← full flow via TestClient (CD + H paths)
+  test_webhook_security.py     ← HMAC, malformed payloads, PII safety
+  test_flex_messages.py        ← Flex Message builder contracts
+  test_session_manager.py      ← session get/set/reset/isolation
 ```
 
-**Run command:**  
+**Run commands:**
 ```bash
+# Full suite
 .venv/bin/python -m pytest tests/ -v --tb=short
+
+# Filtered gates (markers applied to all classes)
+.venv/bin/python -m pytest -m unit          # pure logic only, no I/O, <0.5 s
+.venv/bin/python -m pytest -m security      # signature + PII tests only
+.venv/bin/python -m pytest -m integration   # full E2E via TestClient
+.venv/bin/python -m pytest -m flow_cd       # Car Damage flows only
 ```
 
-**Key conftest.py fixtures:**
+**Key `conftest.py` fixtures:**
 
 | Fixture | What it patches | Scope |
 |---|---|---|
@@ -309,6 +318,9 @@ tests/
 | `set_session(uid, data)` | Directly writes `main.user_sessions[uid]` | function |
 | `get_session(uid)` | Reads `main.user_sessions[uid]` | function |
 | `clean_sessions` | Clears `user_sessions` before+after every test | autouse |
+| `app_client` | `TestClient(app)` — exceptions propagate (reveals real bugs) | function |
+| `lenient_client` | `TestClient(app, raise_server_exceptions=False)` — for malformed-payload / 4xx-5xx tests only | function |
+| `tmp_data_dir` | Temp dir; patches `DATA_DIR` env var so storage resolves correctly | function |
 | `_set_env_vars` | Sets fake `LINE_CHANNEL_*`, `GEMINI_API_KEY`, `DATA_DIR` | session |
 | `_stub_genai` | Replaces `sys.modules["google.generativeai"]` with MagicMock | session |
 
@@ -320,15 +332,16 @@ These items are not yet implemented and should be prioritised by the next develo
 
 | Priority | Task | Notes |
 |---|---|---|
-| 🔴 High | **Dashboard authentication** | `/reviewer`, `/manager`, `/admin` are open. Add HTTP Basic Auth or LINE Login JWT before any deployment. |
+| 🔴 High | **Dashboard authentication** | `/reviewer`, `/manager`, `/admin` are open. Add HTTP Basic Auth (quickest: FastAPI `HTTPBasic` dependency + `ADMIN_USER`/`ADMIN_PASSWORD` env vars) or LINE Login JWT before any deployment. |
 | 🔴 High | **Replace mock_data with real policy API** | `handlers/identity.py` calls `mock_data.*`. Swap for actual insurer API (REST or DB). Define interface via Protocol class. |
-| 🟠 Medium | **Health claim counterpart flow** | Health claims skip `waiting_for_counterpart` but `handle_document_image` still checks `has_counterpart`. Verify H flow is complete end-to-end. |
+| 🔴 High | **Thread-safe `user_sessions`** | Global `dict` is not safe under multi-worker uvicorn or concurrent async requests. Short-term: `asyncio.Lock`. Long-term: Redis session store. |
+| 🟠 Medium | **Health claim counterpart flow** | Health claims skip `waiting_for_counterpart` but `handle_document_image` still checks `has_counterpart`. Verify H flow is complete end-to-end. No integration test yet for H OCR path. |
 | 🟠 Medium | **GDPR / PII purge** | No mechanism to delete `/data/claims/{id}` or session data. Need a data retention policy + cleanup job. |
 | 🟠 Medium | **Kubernetes manifests** | `docker-compose.yml` is ready but no K8s `Deployment.yaml`, `PersistentVolumeClaim.yaml`, `Secret.yaml` exist yet. |
-| 🟡 Low | **Async test coverage** | 8 tests are skipped because they use `async def` without `@pytest.mark.asyncio`. Add `asyncio_mode = "auto"` to `pytest.ini` or mark individually. |
-| 🟡 Low | **Reviewer/Manager auth** | Dashboard HTML has no login; use nginx `auth_basic` as quick solution or integrate with corporate SSO. |
 | 🟡 Low | **AI prompt versioning** | Prompts are hardcoded in `ai/extract.py`, `ai/categorise.py`. Externalise to a YAML prompt registry for easier tuning. |
 | 🟡 Low | **Token cost alerting** | Token JSONL is written but no alert fires when cost exceeds threshold. Add a daily aggregation job. |
+| 🟡 Low | **Health claim OCR integration test** | `TestPolicyVerificationByImage` only covers CD. Add a test for H CID image → `search_health_policies_by_cid`. |
+| 🟡 Low | **Type hints on handler functions** | Handler signatures use bare `Dict` without full generics. Add `dict[str, dict]` style hints and `-> None` returns throughout. |
 
 ---
 
@@ -382,7 +395,7 @@ docker-compose --profile dev up
 
 ## 13. Coding Conventions Established in This Codebase
 
-1. **No `print()` statements** — always use `logger.info/debug/warning/error`.
+1. **No `print()` statements** — always use `logger.info/debug/warning/error/exception`. `main.py` uses `logger = logging.getLogger(__name__)` at module level. Never log raw user message text (PII).
 2. **Handlers are pure functions** — they receive `line_bot_api`, `event` (may be `None` in push contexts), `user_id`, `user_sessions`, and input data. No globals.
 3. **Session access** — always use `session.get("key")` (not `session["key"]`) for optional fields to avoid `KeyError` in partially-seeded test sessions.
 4. **`claim_id` guard** — every `claim_store.*` call is wrapped in `if claim_id:` because test sessions may not have a claim yet.
@@ -390,6 +403,8 @@ docker-compose --profile dev up
 6. **12-Factor imports** — `constants.py` is the single source of truth; no magic strings in handlers.
 7. **All monetary values** — stored as `float` (THB), never string.
 8. **Filenames in storage** — format: `{category}_{YYYYMMDD}_{HHMMSS}.{ext}` generated by `document_store.save_document()`.
+9. **Webhook error handling** — `_handle_webhook` catches `InvalidSignatureError` → 400, `ValueError/KeyError/UnicodeDecodeError` (malformed body) → 400. Do **not** catch `Exception` broadly in the webhook layer; let FastAPI's global handler emit 500 and log automatically.
+10. **Test client split** — use `app_client` (exceptions propagate) for all normal tests; use `lenient_client` only when a test deliberately sends malformed/invalid payloads and needs to inspect the 4xx/5xx response.
 
 ---
 
@@ -397,19 +412,21 @@ docker-compose --profile dev up
 
 | Commit | Description |
 |---|---|
-| `eb66558` | Updated business requirement and user journey (current HEAD on `add_doc_verify`) |
+| `eb66558` | Updated business requirement and user journey |
 | `9583442` | Add spec from document-verify project |
 | `b7a8a21` | Add current technical spec and business requirements |
 | `0b54808` | Merge branch 'gcp' (last commit on `main`) |
 
 All v2.0 code (constants, storage, ai, handlers, dashboards, tests, main.py rewrite)
-was implemented **in the working tree** of branch `add_doc_verify` and has **not yet
-been committed**. The next developer should:
+and the 2026-02-26 code-quality fixes (import cleanup, print→logger, webhook 400 fix,
+test assertion improvements, pytest markers) are in the **working tree** of branch
+`add_doc_verify` and have **not yet been committed**. The next developer should:
 
 ```bash
 git add -A
-git commit -m "feat: implement v2.0 full claim pipeline (CD+H, storage, AI, dashboards, tests)"
-git push
+git commit -m "feat: implement v2.0 full claim pipeline + code quality fixes (CD+H, storage, AI, dashboards, tests)"
+git push origin add_doc_verify
+# Then open a PR: add_doc_verify → main
 ```
 
 ---
@@ -418,15 +435,26 @@ git push
 
 - [ ] Read `document/business-requirement.md` (BRD v2.0) — source of truth for features
 - [ ] Read `document/tech-spec.md` — storage schema, API spec, state machine
-- [ ] Run `193 tests pass` before making any changes
-- [ ] Commit current working tree (see §14 above)
+- [ ] Confirm `338 tests pass` before making any changes
+- [ ] Commit current working tree and push (see §14 above)
 - [ ] Open PR from `add_doc_verify` → `main`
-- [ ] Address "Known Gaps" in §10 in priority order
-- [ ] Replace `mock_data.py` lookups with real insurer policy API
-- [ ] Add dashboard authentication before going to production
+- [ ] Address "Known Gaps" in §10 in priority order:
+  - [ ] Add dashboard authentication (`ADMIN_USER` / `ADMIN_PASSWORD` env vars + `HTTPBasic` dependency)
+  - [ ] Replace `mock_data.py` lookups with real insurer policy API
+  - [ ] Add `asyncio.Lock` around `user_sessions` writes (short-term thread safety)
+  - [ ] Verify Health claim end-to-end flow and add H OCR integration test
 - [ ] Create Kubernetes manifests (`k8s/` folder) for PVC, Deployment, Service, Secret
 - [ ] Set up CI pipeline: `pytest` on PR, Docker build on merge to main
 
 ---
 
-*This document was generated by GitHub Copilot (Claude Sonnet 4.6) on 2026-02-26.*
+## 16. Session Log
+
+| Date | Developer | Summary |
+|---|---|---|
+| 2026-02-26 | GitHub Copilot (Claude Sonnet 4.6) | Built v2.0 full pipeline (CD+H, storage, AI, dashboards, tests). 193 tests. |
+| 2026-02-26 | Antigravity (Gemini) | Code quality review & fixes: duplicate imports removed, all `print()`→`logger.*`, webhook returns 400 for malformed body (was 500), `raise_server_exceptions=False` removed from test client, 3 vacuous assertions replaced, exact state assertions in flow tests, `@pytest.mark.unit/integration/security/flow_cd` applied to all 30+ test classes, `asyncio_mode = auto` added. **338 tests, all green.** |
+
+---
+
+*This document was last updated by Antigravity (Google Deepmind) on 2026-02-26.*

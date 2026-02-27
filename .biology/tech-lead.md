@@ -166,7 +166,7 @@ I am responsible for the technical correctness of every file I touch. If I make 
 
 # Project-State Handoff Snapshot
 
-> This section is the **living technical state of the project** as of February 2026.  
+> This section is the **living technical state of the project** as of February 26, 2026.  
 > A new Technical Lead must read this entire section before touching any file.
 
 ---
@@ -179,39 +179,59 @@ I am responsible for the technical correctness of every file I touch. If I make 
 
 | File / Path | Lines | State | Notes |
 |---|:---:|---|---|
-| `main.py` | 789 | ⚠️ v1.0 still | Core FastAPI app. **Has NOT been updated to import/use the new `ai/`, `handlers/`, `storage/` packages.** Still monolithic. The new packages exist alongside but are not yet wired in. |
-| `flex_messages.py` | 917 | ⚠️ Working (bug) | All Flex Message builders. ⚠️ `create_vehicle_selection_flex` defined twice (L129 + L775) — silent duplicate; second definition always wins. Fix before extending. |
-| `constants.py` | 111 | ✅ New | Central constants: `GEMINI_MODEL`, pricing, `DATA_DIR`, `VALID_CATEGORIES`, `REQUIRED_DOCS`, `OPTIONAL_DOCS`, `VALID_TRANSITIONS`, `CANCEL_KEYWORDS`, `CD_KEYWORDS`, `H_KEYWORDS`, `TRIGGER_KEYWORDS`, `APP_VERSION`. All new packages import from here. |
-| `mock_data.py` | ~1500 | ⚠️ Large | Policy lookup. File is ~1.5 MB — contains extensive mock data. Health (H) records status: verify before implementing H claim flow. |
-| `ngrok.py` | ~30 | ✅ Fixed | Was reading `NGROK_AUTH_TOKEN` → corrected to `NGROK_AUTHTOKEN`. |
+| `main.py` | 359 | ⚠️ v1.0 refactored | FastAPI app. Greatly slimmed from 789 → 359 lines. Imports from `config`, `session_manager`, `claim_engine`. **Still runs v1.0 state machine.** New `handlers/`, `ai/`, `storage/` packages exist but are NOT yet wired in. |
+| `config.py` | 25 | ✅ New | ENV loading, LINE `Configuration`, `WebhookHandler`, `gemini_model`. Raises `ValueError` if required vars missing. |
+| `session_manager.py` | 86 | ✅ New | `user_sessions` dict + `get_session`, `set_state`, `reset_session`, `process_search_result`. |
+| `claim_engine.py` | 272 | ✅ New | `extract_info_from_image_with_gemini`, `analyze_damage_with_gemini`, `start_claim_analysis`, `extract_phone_from_response`. v1.0 AI logic extracted from `main.py`. |
+| `flex_messages.py` | ~917 | ⚠️ Working (bug) | All Flex Message builders. ⚠️ `create_vehicle_selection_flex` defined twice (L129 + L775) — silent duplicate; second definition always wins. Fix before extending. |
+| `constants.py` | 111 | ✅ Built | `GEMINI_MODEL`, pricing, `DATA_DIR`, `VALID_CATEGORIES`, `REQUIRED_DOCS`, `OPTIONAL_DOCS`, `VALID_TRANSITIONS`, `CANCEL_KEYWORDS`, `CD_KEYWORDS`, `H_KEYWORDS`, `TRIGGER_KEYWORDS`, `APP_VERSION`, log constants. |
+| `mock_data.py` | ~1.5MB | ⚠️ Large | Policy lookup mock DB. Health (H) records: verify before implementing H claim flow. |
+| `ngrok.py` | ~30 | ✅ Fixed | Was `NGROK_AUTH_TOKEN` → corrected to `NGROK_AUTHTOKEN`. |
 
-### New Packages (BUILT)
+### New Packages (ALL BUILT)
 
 | File / Path | Lines | State | Notes |
 |---|:---:|---|---|
-| `constants.py` | 111 | ✅ Built | (listed above) |
-| `ai/__init__.py` | 88 | ✅ Built | Shared Gemini client init + `_call_gemini()` wrapper with token tracking + `_append_token_record()`. All AI sub-modules import the shared client from here. |
-| `ai/ocr.py` | 59 | ✅ Built | `extract_id_from_image(image_bytes) → Dict` — moved + renamed from `main.py`'s `extract_info_from_image_with_gemini`. |
-| `ai/categorise.py` | 60 | ✅ Built | `categorise_document(image_bytes) → str` — returns one of the `VALID_CATEGORIES` strings or `"unknown"`. |
-| `ai/extract.py` | 226 | ✅ Built | `extract_fields(image_bytes, category) → Dict` — category-specific prompts, Buddhist Era conversion, null-for-unreadable. |
-| `ai/analyse_damage.py` | 185 | ✅ Built | `analyse_damage(...) → str` — moved from `main.py`'s `analyze_damage_with_gemini`. Eligibility matrix + disclaimer appended. |
-| `storage/__init__.py` | 5 | ✅ Built | Empty package marker. |
-| `storage/sequence.py` | 59 | ✅ Built | `next_claim_id(claim_type) → str` — thread-safe with `threading.Lock` + `fcntl.LOCK_EX`. |
-| `storage/claim_store.py` | 223 | ✅ Built | All 8 public functions from tech-spec §9.1: `create_claim`, `get_claim_status`, `update_claim_status`, `mark_document_useful`, `add_document_to_claim`, `update_extracted_data`, `get_extracted_data`, `list_all_claims`. |
+| `ai/__init__.py` | 88 | ✅ Built | Shared Gemini client init + `_call_gemini()` wrapper with token tracking + `_append_token_record()`. |
+| `ai/ocr.py` | 59 | ✅ Built | `extract_id_from_image(image_bytes) → Dict` |
+| `ai/categorise.py` | 60 | ✅ Built | `categorise_document(image_bytes) → str` |
+| `ai/extract.py` | 226 | ✅ Built | `extract_fields(image_bytes, category) → Dict` |
+| `ai/analyse_damage.py` | 185 | ✅ Built | `analyse_damage(...) → str` |
+| `storage/__init__.py` | 5 | ✅ Built | Package marker. |
+| `storage/sequence.py` | 59 | ✅ Built | `next_claim_id(claim_type) → str` — thread-safe. |
+| `storage/claim_store.py` | 223 | ✅ Built | All public functions including `save_summary`. |
 | `storage/document_store.py` | 76 | ✅ Built | `save_document`, `get_document_bytes`, `get_document_path`. |
-| `handlers/__init__.py` | 5 | ✅ Built | Empty package marker. |
-| `handlers/trigger.py` | 160 | ✅ Built | Claim-type detection from keywords, Claim ID generation, session init, transition to `verifying_policy`. |
-| `handlers/identity.py` | 246 | ✅ Built | Policy verification by CID text + OCR image path; multiple-policy carousel; session advance. |
-| `handlers/documents.py` | — | ❌ Not yet | Upload loop, categorisation, extraction, ownership QuickReply (tech-spec §7.2). |
-| `handlers/submit.py` | — | ❌ Not yet | Completeness check + claim submission (tech-spec §6, `ready_to_submit` state). |
+| `handlers/__init__.py` | 5 | ✅ Built | Package marker. |
+| `handlers/trigger.py` | 160 | ✅ Built | Claim-type detection, Claim ID, session init. |
+| `handlers/identity.py` | 246 | ✅ Built | Policy verification by CID text + OCR; multi-policy carousel. |
+| `handlers/documents.py` | 326 | ✅ Built | Upload loop, categorise, extract, ownership QuickReply, checklist, ready_to_submit transition. |
+| `handlers/submit.py` | 121 | ✅ Built | Completeness check, persist Submitted status, AI summary, confirmation flex. |
 
-### Tests
+### Dashboards (ALL BUILT)
 
-| File / Path | Lines | State | Notes |
-|---|:---:|---|---|
-| `tests/__init__.py` | 1 | ✅ Built | Empty package marker. |
-| `tests/conftest.py` | 259 | ✅ Built | Shared pytest fixtures: `app_client` (TestClient with all external deps mocked), `clean_sessions`, `tmp_data_dir`, `mock_line_api`, `mock_gemini`, `mock_image_download`. |
-| `tests/test_data.py` | 558 | ✅ Built | Fixture data: `DUMMY_JPEG_BYTES`, mock tokens/secrets, canned Gemini response dicts, sample policy records. |
+| File / Path | State | Notes |
+|---|---|---|
+| `dashboards/reviewer.html` | ✅ Built | 3-panel: claim list / doc viewer / thumbnail grid |
+| `dashboards/manager.html` | ✅ Built | Aggregate metrics + daily chart |
+| `dashboards/admin.html` | ✅ Built | Log viewer + token usage |
+
+### Tests (338 PASSING)
+
+| File / Path | State | Notes |
+|---|---|---|
+| `conftest.py` | ✅ Built | Root-level project-wide fixtures |
+| `pytest.ini` | ✅ Built | Config: asyncio_mode=auto, timeout=30, custom markers |
+| `requirements_test.txt` | ✅ Built | Test-only deps |
+| `tests/__init__.py` | ✅ Built | Package marker |
+| `tests/conftest.py` | ✅ Built | Shared fixtures: `app_client`, mocks for LINE + Gemini |
+| `tests/test_data.py` | ✅ Built | Fixture data + canned Gemini responses |
+| `tests/test_api_endpoints.py` | ✅ Built | FastAPI endpoint tests |
+| `tests/test_business_logic.py` | ✅ Built | Business rules |
+| `tests/test_claim_engine.py` | ✅ Built | AI engine tests |
+| `tests/test_conversation_flows.py` | ✅ Built | Full CD + H conversation flows |
+| `tests/test_flex_messages.py` | ✅ Built | Flex message builder tests |
+| `tests/test_session_manager.py` | ✅ Built | Session state management tests |
+| `tests/test_webhook_security.py` | ✅ Built | HMAC signature + malformed payload → 400 |
 
 ### Infrastructure & Config
 
@@ -290,102 +310,61 @@ These decisions are final unless the human explicitly reverses them. Do not revi
 
 ---
 
-## H4. What Must Be Built — Prioritised Backlog
+## H4. What Must Be Built — Remaining Backlog
 
-Implement in this order. Each step must leave the bot in a working state.
+All infrastructure, packages, dashboards, and tests are complete. Only wiring and integration remain.
 
-### Step 1 — Infrastructure ✅ COMPLETE
-- [x] `pyyaml`, `jinja2`, `aiofiles` in `requirements.txt` — already present
-- [x] `claim-data:/data` volume in `docker-compose.yml` — done
-- [x] `DATA_DIR=/data` env var in `docker-compose.yml` — done
-- [x] Data directory init + `sequence.json` seed — handled by `entrypoint.sh` (not `main.py`)
+### ✅ COMPLETE
+- [x] Infrastructure: `pyyaml`, `jinja2`, `aiofiles`, volume, `entrypoint.sh`, `healthcheck`
+- [x] `config.py`, `session_manager.py`, `claim_engine.py` — extracted from `main.py`
+- [x] `constants.py` — all shared constants
+- [x] `ai/` package — `ocr`, `categorise`, `extract`, `analyse_damage`, `__init__` wrapper
+- [x] `storage/` package — `sequence`, `claim_store`, `document_store`
+- [x] `handlers/trigger.py` — claim-type detection, Claim ID, session init
+- [x] `handlers/identity.py` — policy verification by CID text + OCR, multi-policy carousel
+- [x] `handlers/documents.py` — upload loop, categorise, extract, ownership QuickReply ✅
+- [x] `handlers/submit.py` — completeness check, Submitted status, AI summary ✅
+- [x] `dashboards/reviewer.html`, `manager.html`, `admin.html` — all 3 built ✅
+- [x] `tests/` — 338 tests passing across 10 test files ✅
+- [x] `pytest.ini` — asyncio_mode=auto, custom markers, timeout=30
+- [x] `requirements_test.txt`
 
-### Step 2 — Storage Package ✅ COMPLETE
-- [x] `storage/__init__.py` — done
-- [x] `storage/sequence.py` — done (thread-safe, `fcntl`)
-- [x] `storage/claim_store.py` — done (all 8 functions)
-- [x] `storage/document_store.py` — done (3 functions)
-
-### Step 2b — AI Package ✅ COMPLETE
-- [x] `constants.py` — done (all shared constants including keywords, categories, transitions)
-- [x] `ai/__init__.py` — done (shared Gemini client + token tracking wrapper)
-- [x] `ai/ocr.py` — done
-- [x] `ai/categorise.py` — done
-- [x] `ai/extract.py` — done
-- [x] `ai/analyse_damage.py` — done
-
-### Step 2c — Test Fixtures ✅ COMPLETE
-- [x] `tests/conftest.py` — done (full mock suite)
-- [x] `tests/test_data.py` — done (canned responses + policy fixtures)
-
-### Step 2d — Handlers (Partial) ⚠️ IN PROGRESS
-- [x] `handlers/trigger.py` — done (claim-type detection, Claim ID, session init)
-- [x] `handlers/identity.py` — done (policy lookup by CID text + OCR, multi-policy carousel)
-- [ ] `handlers/documents.py` — **NOT YET** (upload loop, categorise, extract, ownership QuickReply)
-- [ ] `handlers/submit.py` — **NOT YET** (completeness check + submission)
-
-### Step 3 — `mock_chat.py` ❌ BLOCKER FOR DEV TESTING
-> ⚠️ **`mock_chat.py` does not exist.** `docker-compose.yml` runs `python mock_chat.py` for the `mock-chat` service. `docker compose --profile dev up` will crash until this file exists.
-- [ ] Create `mock_chat.py` — FastAPI server on port 8001 that:
-  - Intercepts `POST /v2/bot/message/reply` and `POST /v2/bot/message/push` (captures bot responses)
+### ❌ Step A — `mock_chat.py` (BLOCKER for `--profile dev`)
+> ⚠️ `docker-compose.yml` runs `python mock_chat.py`. `docker compose --profile dev up` crashes until this exists.
+- [ ] FastAPI server on port 8001:
+  - Intercepts `POST /v2/bot/message/reply` and `/push`
   - Intercepts `GET /v2/bot/message/{id}/content` (serves dummy image bytes)
-  - Serves LINE-like chat UI at `GET /` (text input + file upload + QuickReply chip rendering)
-  - `GET /chat/events` — SSE stream that pushes bot messages to the UI in real time
-  - `POST /chat/text` + `POST /chat/image` — user-side inputs that generate signed webhooks to `BOT_URL`
-  - Generates valid HMAC-SHA256 `X-Line-Signature` so the bot's `WebhookHandler` accepts events
+  - Serves LINE-like chat UI at `GET /` (text + file upload + QuickReply chips)
+  - `GET /chat/events` — SSE stream for real-time bot messages
+  - `POST /chat/text` + `POST /chat/image` — generate signed HMAC-SHA256 webhooks to `BOT_URL`
 
-### Step 4 — Wire New Packages into `main.py` ❌ NOT STARTED
-**This is the most critical functional gap.** All new packages were built alongside `main.py` but `main.py` has NOT been updated to import or use them.
-- [ ] Replace `handle_text_message` idle→detecting→verifying states with calls to `handlers.trigger` and `handlers.identity`
-- [ ] Replace `extract_info_from_image_with_gemini` call with `ai.ocr.extract_id_from_image`
-- [ ] Replace `analyze_damage_with_gemini` call with `ai.analyse_damage.analyse_damage`
-- [ ] Show Claim ID to user in the policy-found Flex Message
-- [ ] Remove now-redundant duplicate functions from `main.py` after extracting them
-
-### Step 5 — Multi-Document Upload Pipeline
-- [ ] Rewrite `handle_image_message` to follow the v2.0 pipeline (tech-spec §7.2, branches 5a–5k)
-- [ ] Add `awaiting_ownership` state and ownership QuickReply
-- [ ] Add `check_missing_docs(session) -> List[str]` helper
-- [ ] Add `ready_to_submit` state and submit handler
-
-### Step 6 — Health (H) Claim Type
-- [ ] Add Health policy records to `mock_data.py`
-- [ ] Add `H` keyword detection in text handler
-- [ ] Add `create_health_policy_info_flex(policy_info)` to `flex_messages.py`
-- [ ] Adjust `check_missing_docs` to handle H required doc list
-
-### Step 7 — New Flex Message Components
-All defined in tech-spec §13. Build alongside the states that trigger them:
-
-| Function | Trigger state |
-|---|---|
-| `create_claim_type_selector_flex()` | `detecting_claim_type` |
-| `create_claim_confirmed_flex(claim_id, claim_type)` | After claim type confirmed |
-| `create_document_checklist_flex(...)` | `uploading_documents` on entry |
-| `create_doc_received_flex(...)` | After each successful upload |
-| `create_ownership_question_flex(extracted_name)` | `awaiting_ownership` |
-| `create_submit_prompt_flex(claim_id, doc_count)` | `ready_to_submit` |
-| `create_submission_confirmed_flex(claim_id)` | After `submitted` |
-| `create_health_policy_info_flex(policy_info)` | H policy found |
-
-> ⚠️ **Bug to fix first:** `create_vehicle_selection_flex(policies)` is defined **twice** in `flex_messages.py` (line 129 and line 775). The second definition silently shadows the first. Confirm which implementation is current and delete the duplicate before extending the file.
-
-### Step 8 — Web Dashboards
-- [ ] Add Jinja2 to FastAPI app: `templates = Jinja2Templates(directory="dashboards")`
-- [ ] Create `dashboards/reviewer.html` — 3-panel layout (tech-spec §11.1)
-- [ ] Create `dashboards/manager.html` — metrics + charts (tech-spec §11.2)
-- [ ] Create `dashboards/admin.html` — logs + token usage (tech-spec §11.3)
+### ❌ Step B — Register Dashboard Routes in `main.py`
+- [ ] `templates = Jinja2Templates(directory="dashboards")`
 - [ ] Add all 12 endpoints from tech-spec §12
 
-### Step 9 — Bilingual Update
-- [ ] Update all `TextMessage` strings in `main.py` to Thai + English
-- [ ] Update all Flex Message text fields in `flex_messages.py` to Thai + English
-- [ ] Rule: Thai first, English below — always (tech-spec §13, Bilingual Rule FR-12.1)
+### ❌ Step C — Wire v2.0 Handlers into `main.py`
+**Critical functional gap.** `handlers/` package is complete and tested; `main.py` still runs v1.0 logic.
+- [ ] Replace idle→detecting→verifying states with `handlers.trigger` + `handlers.identity`
+- [ ] Replace `handle_image_message` v1.0 branches with `handlers.documents.handle_document_image`
+- [ ] Wire `handlers.documents.handle_counterpart_answer` for `waiting_for_counterpart` state
+- [ ] Wire `handlers.documents.handle_ownership_answer` for `awaiting_ownership` state
+- [ ] Wire `handlers.submit.handle_submit_request` for `ready_to_submit` state
+- [ ] Remove now-redundant v1.0 functions from `main.py` / `claim_engine.py`
 
-### Step 10 — Token Tracking & Logging
-- [ ] Add token recording wrapper around all Gemini calls (tech-spec §8.6)
-- [ ] Replace all `print()` with `logging.getLogger(__name__)`
-- [ ] Configure `RotatingFileHandler` writing to `/data/logs/app.log`
+### ❌ Step D — Health (H) Claim Type
+- [ ] Add Health policy records to `mock_data.py`
+- [ ] Ensure `handlers/trigger.py` H detection is exposed in `main.py`
+- [ ] Build `create_health_policy_info_flex(policy_info)` in `flex_messages.py`
+
+### ❌ Step E — Missing Flex Components
+- [ ] `create_claim_type_selector_flex()` — selector QuickReply for ambiguous trigger
+- [ ] `create_claim_confirmed_flex(claim_id, claim_type)` — Claim ID confirmation card
+- [ ] `create_health_policy_info_flex(policy_info)` — H policy info card
+- [ ] ⚠️ Fix `create_vehicle_selection_flex` duplicate (L129 vs L775) — delete the stale one
+
+### ❌ Step F — Bilingual Update
+- [ ] All `TextMessage` strings: Thai + English
+- [ ] All Flex Message text fields: Thai first, English below
 
 ---
 
@@ -393,37 +372,51 @@ All defined in tech-spec §13. Build alongside the states that trigger them:
 
 | File | Change | Reason |
 |---|---|---|
-| `requirements.txt` | Uncommented `pyngrok`; `pyyaml`, `jinja2`, `aiofiles` confirmed present | `pyngrok` was commented out — ngrok import would fail |
-| `ngrok.py` | `NGROK_AUTH_TOKEN` → `NGROK_AUTHTOKEN` | Env var name mismatch — tunnel never authenticated |
-| `main.py` | Added `_line_api_host` / `_line_data_api_host` configurable env vars | Hardcoded URLs blocked mock testing |
-| `docker-compose.yml` | Added `mock-chat` service; added `claim-data` volume; added `healthcheck`; `ngrok` now waits for healthy | Full v2.0 infrastructure |
-| `.env.example` | Created — documents all env vars | Was missing; no reference for developers |
-| `document/tech-spec.md` | Full replacement v1.0 → v2.0 (592 → 1053 lines) | BRD v2.0 scope requires complete rewrite |
-| `constants.py` | Created — centralises GEMINI_MODEL, pricing, DATA_DIR, keywords, categories, statuses | v2.0 packages all need shared constants; avoids duplication / drift |
-| `ai/__init__.py` | Created — Gemini client init + `_call_gemini` wrapper + token JSONL recording | Isolates all AI calls; enables token tracking without touching each module |
-| `ai/ocr.py` | Created — `extract_id_from_image` | Extracted from `main.py`; keeps AI ops isolated |
-| `ai/categorise.py` | Created — `categorise_document` | New: required for multi-doc pipeline |
-| `ai/extract.py` | Created — `extract_fields` | New: structured JSON extraction per doc type |
-| `ai/analyse_damage.py` | Created — `analyse_damage` | Extracted from `main.py`; no logic changes |
-| `storage/sequence.py` | Created — thread-safe `next_claim_id` | FR-01.6/FR-01.7 claim ID generation |
-| `storage/claim_store.py` | Created — 8 public functions | FR-06 persistent claim folders |
-| `storage/document_store.py` | Created — 3 public functions | Document file I/O isolation |
-| `handlers/trigger.py` | Created — keyword detection + Claim ID + session init | FR-01 claim type detection |
-| `handlers/identity.py` | Created — policy verification (text + OCR) + carousel | FR-02 identity verification |
-| `tests/conftest.py` | Created — full mock fixture suite | Enables unit/integration testing without real LINE or Gemini |
-| `tests/test_data.py` | Created — test constants + policy fixtures | Shared test data |
-| `entrypoint.sh` | Already handles data dir init + sequence.json seed | `_init_data_dir()` listed in tech-spec §14 is already done here |
+| `requirements.txt` | `pyngrok`, `pyyaml`, `jinja2`, `aiofiles` confirmed present | Dependencies for v2.0 |
+| `requirements_test.txt` | Created — test-only deps | Separate test deps from runtime |
+| `ngrok.py` | `NGROK_AUTH_TOKEN` → `NGROK_AUTHTOKEN` | Env var name mismatch |
+| `main.py` | Refactored 789 → 359 lines; extracted to `config.py`, `session_manager.py`, `claim_engine.py` | Single responsibility; testability |
+| `config.py` | Created — env loading + LINE + Gemini config | Startup validation; testable |
+| `session_manager.py` | Created — session dict + helpers | Extracted from `main.py` |
+| `claim_engine.py` | Created — AI functions + analysis flow | Extracted from `main.py` |
+| `docker-compose.yml` | `mock-chat` service; `claim-data` volume; healthcheck; `ngrok` waits healthy | Full v2.0 infrastructure |
+| `.env.example` | Created | Was missing |
+| `document/tech-spec.md` | Updated v2.0 → v2.1 (full current-state rewrite) | Reflect actual implementation |
+| `SYSTEM_SPEC.md` | Created — concise system spec for team onboarding | Quick reference |
+| `constants.py` | Created — all shared constants incl. log constants | Centralised; avoids drift |
+| `ai/__init__.py` | Created — `_call_gemini` wrapper + token JSONL recording | Isolates all AI calls |
+| `ai/ocr.py` | Created | OCR isolated |
+| `ai/categorise.py` | Created | New for multi-doc pipeline |
+| `ai/extract.py` | Created | Structured JSON extraction |
+| `ai/analyse_damage.py` | Created | Extracted from `main.py` |
+| `storage/sequence.py` | Created | Thread-safe Claim ID |
+| `storage/claim_store.py` | Created | All 8+1 functions |
+| `storage/document_store.py` | Created | Document file I/O |
+| `handlers/trigger.py` | Created | FR-01 claim type detection |
+| `handlers/identity.py` | Created | FR-02 identity verification |
+| `handlers/documents.py` | Created ✅ | FR-04 multi-doc upload pipeline |
+| `handlers/submit.py` | Created ✅ | FR-07 claim submission |
+| `dashboards/reviewer.html` | Created ✅ | Reviewer dashboard |
+| `dashboards/manager.html` | Created ✅ | Manager dashboard |
+| `dashboards/admin.html` | Created ✅ | Admin dashboard |
+| `tests/conftest.py` | Created | Full mock fixture suite |
+| `tests/test_data.py` | Created | Shared test data |
+| `tests/test_api_endpoints.py` | Created | API endpoint tests |
+| `tests/test_business_logic.py` | Created | Business rule tests |
+| `tests/test_claim_engine.py` | Created | AI engine tests |
+| `tests/test_conversation_flows.py` | Created | CD + H flow tests |
+| `tests/test_flex_messages.py` | Created | Flex builder tests |
+| `tests/test_session_manager.py` | Created | Session state tests |
+| `tests/test_webhook_security.py` | Created | Security tests |
+| `pytest.ini` | Created | asyncio_mode=auto, markers, timeout |
+| `conftest.py` (root) | Created | Project-wide fixtures |
+| `entrypoint.sh` | Updated — data dir init + sequence.json seed | On-start init |
 
-**Not yet created (still required):**
+**Still missing (required):**
 
 | File | Why needed |
 |---|---|
-| `mock_chat.py` | `docker-compose.yml` references it for `--profile dev`; without it local dev testing is blocked |
-| `handlers/documents.py` | Multi-doc upload pipeline (tech-spec §7.2) |
-| `handlers/submit.py` | Claim submission flow (tech-spec §6, `ready_to_submit`) |
-| `dashboards/reviewer.html` | Reviewer web dashboard (tech-spec §11.1) |
-| `dashboards/manager.html` | Manager web dashboard (tech-spec §11.2) |
-| `dashboards/admin.html` | Admin web dashboard (tech-spec §11.3) |
+| `mock_chat.py` | `docker-compose.yml` `--profile dev` crashes without it |
 
 ---
 
@@ -562,4 +555,4 @@ pytest tests/ -v
 
 ---
 
-*Handoff snapshot last updated: February 26, 2026 by GitHub Copilot (Claude Sonnet 4.6)*
+*Handoff snapshot last updated: February 26, 2026 by Technical Lead (AI) — post full implementation review*
