@@ -1,7 +1,7 @@
 # Business Requirement Document (BRD)
 ## LINE Insurance Claims Bot — "เช็คสิทธิ์ & เคลมประกันด่วน"
 
-**Document Version:** 2.0  
+**Document Version:** 2.1  
 **Date:** February 2026  
 **Status:** Draft  
 **Owner:** Product Owner
@@ -14,6 +14,7 @@
 |---|---|---|
 | 1.0 | February 2026 | Initial release — eligibility check only |
 | 2.0 | February 2026 | Merged: document upload, AI data extraction, data storage, claim submission, reviewer & manager dashboards |
+| 2.1 | February 2026 | Updated build status: `handlers/`, `storage/`, `ai/` modules now BUILT; new session states; Draft claim status; health policy lookup; trigger keywords; claim engine separation |
 
 ---
 
@@ -47,7 +48,7 @@
 
 This product is an **AI-powered LINE chatbot** that guides insurance policyholders through the complete insurance claim journey — from checking eligibility all the way to submitting a fully documented claim — without leaving the LINE app.
 
-The customer describes their situation, verifies their identity, then uploads the required documents (photos of ID cards, driving licenses, vehicle registration, damage photos, or medical documents). The AI **automatically categorises each photo and extracts key data from it**, validates completeness, and assembles the full claim package. Once all required documents are uploaded, the customer submits the claim with a single tap.
+The customer describes their situation (or uses a trigger keyword), the system detects the claim type, generates a Claim ID, then guides identity verification. Once verified, the customer uploads required documents one at a time. The AI **automatically categorises each photo and extracts key data fields**, validates completeness, and assembles the full claim package. Once all required documents are uploaded, the customer submits the claim with a single tap.
 
 Internally, a **Reviewer web dashboard** lets claims staff review each document, confirm extracted data, and update claim status. A **Manager web dashboard** provides real-time analytics on volumes, accuracy rates, and paid amounts.
 
@@ -104,7 +105,7 @@ LINE is the most-used messaging app in Thailand (50M+ active users). Placing the
 | **IT / DevOps Team** | Technical Development | Builds, deploys, and maintains the system |
 | **Compliance / Legal** | Risk & Compliance | Ensures AI outputs are disclaimed; data privacy compliance |
 | **LINE Platform** | LINE Corporation | Messaging infrastructure and Messaging API |
-| **AI Provider** | Google Gemini / Azure OpenAI GPT-4 Vision | AI model for OCR, categorisation, and damage analysis |
+| **AI Provider** | Google Gemini (current PoC) / Azure OpenAI GPT-4 Vision (pipeline spec) | AI model for OCR, categorisation, and damage analysis |
 
 ---
 
@@ -166,28 +167,32 @@ Customer (LINE)                System                         Internal (Web)
 ───────────────────────────────────────────────────────────────────────────────
 1. Trigger
    Type incident or            Detect claim type (CD / H)
-   "เช็คสิทธิ์เคลมด่วน"  →   Generate Claim ID
-                               Create claim folder & records
+   trigger keyword     →       Generate Claim ID
+                               Create claim folder & records (status=Draft)
                           ↓
 2. Identity verification  →   AI reads ID photo if sent (OCR)
-   Type ID / upload photo      Verify against policy database
-                               Display coverage details
+   Type CID / plate /          Verify against policy database (CD or H)
+   upload photo                Display coverage details
                           ↓
-3. Document upload         →   AI categorises each photo
+3. Counterpart question   →   CD only: มีคู่กรณี / ไม่มีคู่กรณี
+   (CD only)                   Advance to uploading_documents state
+                          ↓
+4. Document upload         →   AI categorises each photo
    (one at a time until        AI extracts key data fields
-    all required received)     Save image + extracted JSON
+    all required received)     Save image + extracted JSON to claim folder
                                Show customer what was read
                                Prompt for next missing doc
                           ↓
-4. Ownership confirmation  →   Car Damage only:
-   "Mine" / "Other party"      Assign license to correct party
+5. Ownership confirmation  →   Car Damage only (with counterpart):
+   "ของฉัน" / "คู่กรณี"       Assign license to correct party
                                in extracted_data.json
                           ↓
-5. All documents complete  →   Validate completeness
-   Customer submits            Mark status = Submitted
+6. All documents complete  →   Validate completeness
+   Customer submits            Set status = Submitted
+                               Generate AI summary.md
                                Save final claim package
                           ↓                                ↓
-6. Claim ID shown                              Reviewer opens claim
+7. Claim ID shown                              Reviewer opens claim
    to customer                                 Reviews docs + extracted data
                                                Marks Useful / Not Useful
                                                Updates status (Approved / Rejected / Paid)
@@ -204,14 +209,15 @@ Customer (LINE)                System                         Internal (Web)
 
 | ID | Requirement |
 |---|---|
-| FR-01.1 | The bot MUST start a new session when the user describes an incident or sends "เช็คสิทธิ์เคลมด่วน" |
+| FR-01.1 | The bot MUST start a new claim when the user sends a trigger keyword or describes an incident with claim-type keywords |
 | FR-01.2 | The bot MUST detect the claim type automatically from keywords in the message |
-| FR-01.3 | **Car Damage keywords:** รถ, ชน, เฉี่ยว, ขโมย, หาย, car, vehicle, accident, damage, crash |
-| FR-01.4 | **Health keywords:** เจ็บ, ป่วย, ผ่าตัด, โรงพยาบาล, health, sick, hospital, medical, surgery |
-| FR-01.5 | If both keyword sets match equally, the bot MUST ask the customer to clarify |
-| FR-01.6 | On detection, the system MUST auto-generate a Claim ID and create the claim record immediately |
-| FR-01.7 | **Claim ID format:** `{CD or H}-{YYYYMMDD}-{NNNNNN}` — 6-digit zero-padded sequence per claim type, persisted across restarts |
-| FR-01.8 | Customer can cancel and restart at any time: ยกเลิก, cancel, เริ่มใหม่, restart |
+| FR-01.3 | **Car Damage keywords (CD_KEYWORDS):** รถ, ชน, เฉี่ยว, ขโมย, หาย, car, vehicle, accident, damage, crash |
+| FR-01.4 | **Health keywords (H_KEYWORDS):** เจ็บ, ป่วย, ผ่าตัด, โรงพยาบาล, health, sick, hospital, medical, surgery |
+| FR-01.5 | **Trigger keywords (TRIGGER_KEYWORDS):** เช็คสิทธิ์เคลมด่วน, เช็คสิทธิ์, เคลม, claim, insurance — these always start the flow regardless of claim-type keywords |
+| FR-01.6 | If both keyword sets match equally (ambiguous), the bot MUST show a claim-type selector card (CD / H) |
+| FR-01.7 | On type detection, the system MUST auto-generate a Claim ID and create the claim record immediately with status = **Draft** |
+| FR-01.8 | **Claim ID format:** `{CD or H}-{YYYYMMDD}-{NNNNNN}` — 6-digit zero-padded sequence per claim type, persisted across restarts in `sequence.json` |
+| FR-01.9 | Customer can cancel and restart at any time: ยกเลิก, cancel, เริ่มใหม่, restart |
 
 ---
 
@@ -221,11 +227,17 @@ Customer (LINE)                System                         Internal (Web)
 |---|---|
 | FR-02.1 | After claim type is detected, the bot MUST request identity verification before accepting documents |
 | FR-02.2 | The bot MUST accept a **typed 13-digit national ID number** |
-| FR-02.3 | The bot MUST accept a **photo of a Thai national ID card or driving license** — AI reads the 13-digit ID automatically |
-| FR-02.4 | AI OCR MUST return digits only — no asterisks, dashes, or masking |
-| FR-02.5 | The system MUST check the ID against the policy database and respond with: (a) Valid active policy, (b) Expired, (c) Inactive, or (d) Not found |
-| FR-02.6 | On a valid policy, the bot MUST display: policy number, coverage type, coverage amount, deductible, vehicle or health plan details |
-| FR-02.7 | Document upload MUST only begin after successful policy verification |
+| FR-02.3 | The bot MUST accept a **typed license plate number** (CD only) |
+| FR-02.4 | The bot MUST accept a **typed name** (last name or full name) as a fallback search |
+| FR-02.5 | The bot MUST accept a **photo of a Thai national ID card or driving license** — AI reads the 13-digit ID automatically via OCR |
+| FR-02.6 | AI OCR MUST return digits only — no asterisks, dashes, or masking |
+| FR-02.7 | For **CD claims**, the system searches the car policy database (`search_policies_by_cid`, `search_policies_by_plate`, `search_policies_by_name`) |
+| FR-02.8 | For **H claims**, the system searches the health policy database (`search_health_policies_by_cid`) |
+| FR-02.9 | If multiple policies are found, the bot MUST show a vehicle selection carousel; customer selects their plate |
+| FR-02.10 | The system MUST check the ID against the policy database and respond with: (a) Valid active policy, (b) Expired, (c) Inactive, or (d) Not found |
+| FR-02.11 | On a valid active CD policy, the bot MUST display: policy number, coverage type, coverage amount, deductible, vehicle details |
+| FR-02.12 | On a valid active H policy, the bot MUST display: plan name, IPD coverage, OPD coverage, room allowance per night |
+| FR-02.13 | Document upload MUST only begin after successful policy verification |
 
 ---
 
@@ -234,13 +246,14 @@ Customer (LINE)                System                         Internal (Web)
 | ID | Requirement |
 |---|---|
 | FR-03.1 | The bot MUST accept image uploads (JPG, PNG, WebP) |
-| FR-03.2 | After each upload, the AI MUST automatically **categorise** the document (e.g., driving_license, receipt) |
-| FR-03.3 | If the AI cannot determine type ("unknown"), it MUST reject the image and tell the user which types are accepted |
-| FR-03.4 | After each successful upload, the bot MUST confirm which document was recognised |
-| FR-03.5 | The bot MUST always show upload progress: documents received so far and what is still missing |
-| FR-03.6 | **Car Damage — With other party:** driving_license_customer + driving_license_other_party + vehicle_registration + vehicle_damage_photo (≥1); optional: vehicle_location_photo |
-| FR-03.6b | **Car Damage — No other party:** driving_license_customer + vehicle_registration + vehicle_damage_photo (≥1); optional: vehicle_location_photo |
-| FR-03.7 | **Health required:** citizen_id_card, medical_certificate, itemised_bill, receipt (multiple allowed); optional: discharge_summary |
+| FR-03.2 | After each upload, the AI MUST automatically **categorise** the document into one of the valid category strings |
+| FR-03.3 | **Valid categories:** driving_license, vehicle_registration, citizen_id_card, receipt, medical_certificate, itemised_bill, discharge_summary, vehicle_damage_photo, vehicle_location_photo |
+| FR-03.4 | If the AI returns "unknown", it MUST reject the image and tell the user which types are required |
+| FR-03.5 | After each successful upload, the bot MUST confirm which document was recognised and show extracted data |
+| FR-03.6 | The bot MUST always show upload progress: documents received so far and what is still missing |
+| FR-03.7 | **Car Damage — With other party:** driving_license_customer + driving_license_other_party + vehicle_registration + vehicle_damage_photo (≥1); optional: vehicle_location_photo |
+| FR-03.8 | **Car Damage — No other party:** driving_license_customer + vehicle_registration + vehicle_damage_photo (≥1); optional: vehicle_location_photo |
+| FR-03.9 | **Health required:** citizen_id_card, medical_certificate, itemised_bill, receipt (multiple allowed); optional: discharge_summary |
 
 ---
 
@@ -265,6 +278,8 @@ After categorisation, the AI MUST extract the following fields per document type
 - FR-04.2: For damage and location photos, extract GPS coordinates from image EXIF if present.
 - FR-04.3: Unreadable fields MUST be stored as `null` — never guessed.
 - FR-04.4: Extracted data MUST be shown to the customer in the chat immediately after upload.
+- FR-04.5: Multiple damage photos are stored as indexed keys `vehicle_damage_photo_1`, `vehicle_damage_photo_2`, etc.
+- FR-04.6: Multiple receipts are stored as indexed keys `receipt_1`, `receipt_2`, etc. (in `medical_receipts[]` in extracted_data.json).
 
 ---
 
@@ -277,7 +292,8 @@ After categorisation, the AI MUST extract the following fields per document type
 | FR-05.3 | For a **with-other-party** claim, every driving license upload MUST trigger an ownership question |
 | FR-05.4 | The bot MUST present two quick-reply buttons: **"ของฉัน (ฝ่ายเรา)"** / **"คู่กรณี (อีกฝ่าย)"** |
 | FR-05.5 | The same side (customer or other party) cannot be assigned twice |
-| FR-05.6 | If a duplicate attempt is made, the bot MUST reject it with a clear explanation |
+| FR-05.6 | If a duplicate attempt is made, the bot MUST reject it with a clear explanation and re-show the buttons |
+| FR-05.7 | During ownership assignment, session state transitions to `awaiting_ownership`; after confirmation it returns to `uploading_documents` |
 
 ---
 
@@ -285,11 +301,12 @@ After categorisation, the AI MUST extract the following fields per document type
 
 | ID | Requirement |
 |---|---|
-| FR-06.1 | Each claim MUST have its own dedicated folder on persistent storage, named by Claim ID |
+| FR-06.1 | Each claim MUST have its own dedicated folder on persistent storage at `{DATA_DIR}/claims/{claim_id}/` |
 | FR-06.2 | Every uploaded image MUST be saved as: `{document_category}_{YYYYMMDD_HHMMSS}.{ext}` |
 | FR-06.3 | All AI-extracted data MUST be saved to `extracted_data.json` inside the claim folder |
 | FR-06.4 | Claim metadata (status, memo, document list, response time metrics) MUST be saved to `status.yaml` |
-| FR-06.5 | All stored data MUST survive container restarts via persistent volume |
+| FR-06.5 | All stored data MUST survive container restarts via persistent volume (DATA_DIR env var, defaults to `/data`) |
+| FR-06.6 | An AI-generated bilingual `summary.md` MUST be written to the claim folder on submission |
 
 ```
 Folder structure per claim:
@@ -297,7 +314,7 @@ Folder structure per claim:
 {CLAIM_ID}/
   status.yaml             — status, memo, document list, metrics
   extracted_data.json     — all AI-extracted fields per document
-  summary.md              — AI-generated claim summary
+  summary.md              — AI-generated bilingual claim summary
   documents/
     driving_license_20260226_120000.jpg
     vehicle_registration_20260226_120015.png
@@ -310,13 +327,14 @@ Folder structure per claim:
 
 | ID | Requirement |
 |---|---|
-| FR-07.1 | The submit option MUST only appear when ALL required documents are uploaded |
+| FR-07.1 | The submit button MUST only appear when ALL required documents are uploaded (state = `ready_to_submit`) |
 | FR-07.2 | On submission attempt, the system re-validates completeness and rejects with a missing document list if incomplete |
 | FR-07.3 | **Car Damage — With other party:** driving license (customer) + driving license (other party) + vehicle registration + ≥1 damage photo |
-| FR-07.3b | **Car Damage — No other party:** driving license (customer) + vehicle registration + ≥1 damage photo |
-| FR-07.4 | **Health:** citizen ID card + medical certificate + itemised bill + ≥1 receipt |
-| FR-07.5 | On success, claim status MUST be set to "Submitted" and submission timestamp recorded |
-| FR-07.6 | The bot MUST show the Claim ID to the customer after submission for tracking |
+| FR-07.4 | **Car Damage — No other party:** driving license (customer) + vehicle registration + ≥1 damage photo |
+| FR-07.5 | **Health:** citizen ID card + medical certificate + itemised bill + ≥1 receipt |
+| FR-07.6 | On success, claim status MUST be updated from `Draft` to `Submitted` and submission timestamp recorded in `status.yaml` |
+| FR-07.7 | After status update, the system MUST generate an AI bilingual `summary.md` for the claim folder |
+| FR-07.8 | The bot MUST show the Claim ID to the customer after submission for tracking |
 
 ---
 
@@ -347,9 +365,18 @@ Folder structure per claim:
 | FR-09.2 | Clicking a claim shows all uploaded document thumbnails |
 | FR-09.3 | Clicking a thumbnail shows full-size image + AI-extracted data for that document |
 | FR-09.4 | Reviewers can mark each document as **Useful** or **Not Useful** |
-| FR-09.5 | Reviewers can update status: Submitted → Under Review → Pending → Approved → Rejected → Paid |
+| FR-09.5 | Reviewers can update status following valid transitions: Submitted → Under Review → Pending → Approved → Rejected → Paid |
 | FR-09.6 | Reviewers can add a free-text memo to any claim |
 | FR-09.7 | All changes persist to `status.yaml` immediately |
+
+**Valid status transitions (enforced in `constants.VALID_TRANSITIONS`):**
+
+| From | Allowed Next |
+|---|---|
+| Submitted | Under Review |
+| Under Review | Pending, Approved, Rejected |
+| Pending | Under Review, Rejected |
+| Approved | Paid |
 
 ---
 
@@ -372,7 +399,7 @@ Folder structure per claim:
 |---|---|
 | FR-11.1 | Search and filter application logs by level, category, and date |
 | FR-11.2 | Change log verbosity at runtime without restarting the service |
-| FR-11.3 | View AI token usage: total tokens, total cost, per-operation breakdown, usage over time |
+| FR-11.3 | View AI token usage: total tokens, total cost per operation, usage over time (persisted to `/data/token_records/YYYY-MM.jsonl`) |
 
 ---
 
@@ -384,6 +411,8 @@ Folder structure per claim:
 | FR-12.2 | All AI errors MUST produce user-friendly bilingual messages — no technical errors to customers |
 | FR-12.3 | HTTP 429 rate-limit errors MUST trigger a polite retry prompt |
 | FR-12.4 | If a user messages outside an active session, the bot MUST invite them to start a new claim |
+| FR-12.5 | All logging MUST use `logger.*` — `print()` statements are prohibited |
+| FR-12.6 | Malformed webhook payloads MUST return HTTP 400, not 500 |
 
 ---
 
@@ -391,7 +420,8 @@ Folder structure per claim:
 
 ### BR-01: Claim ID Sequence
 - 6-digit, zero-padded (000001, 000042)
-- CD and H have **independent counters**, both persisted across restarts in `sequence.json`
+- CD and H have **independent counters**, both persisted across restarts in `{DATA_DIR}/sequence.json`
+- Thread-safe: uses `threading.Lock()` + `fcntl.flock` for concurrent container safety
 
 ### BR-02: Buddhist Era → Gregorian Date Conversion
 - Thai documents use Buddhist Era (พ.ศ.) — 543 years ahead of Gregorian
@@ -405,11 +435,12 @@ Folder structure per claim:
 - A second upload for an already-assigned side MUST be rejected
 
 ### BR-04: Multiple Receipts (Health Claims)
-- Multiple medical receipts allowed, stored in `medical_receipts[]` array
+- Multiple medical receipts allowed, stored as `receipt_1`, `receipt_2`, … in `uploaded_docs`
+- In `extracted_data.json` they are stored in the `medical_receipts[]` array
 - No upper limit on receipt count
 
 ### BR-05: Unknown Documents Are Rejected
-- "unknown" category = rejected; customer told which document types are accepted
+- "unknown" category = rejected; customer told which document types are required
 
 ### BR-06: Paid Amount Reporting
 - Only claims with status **"Paid"** are counted in paid amount totals in Manager analytics
@@ -417,6 +448,16 @@ Folder structure per claim:
 ### BR-07: No Authentication (PoC)
 - All web dashboard endpoints are publicly accessible in PoC scope
 - Authentication required before production
+
+### BR-08: Claim Status Lifecycle
+- All claims start as **Draft** (created on trigger, before submission)
+- Lifecycle: Draft → Submitted → Under Review → Pending → Approved → Paid (or Rejected at any internal stage)
+- Status transitions enforced by `constants.VALID_TRANSITIONS`
+
+### BR-09: AI Token Cost Tracking
+- Every Gemini API call records: timestamp, operation name, model, input tokens, output tokens, cost (USD)
+- Records persisted to `/data/token_records/YYYY-MM.jsonl`
+- Maximum `TOKEN_RECORD_MAX` (10,000) records kept per month
 
 ---
 
@@ -437,16 +478,17 @@ Folder structure per claim:
 
 | Requirement | Description |
 |---|---|
-| Persistence | All claim data, sequences, logs, token records survive restarts |
+| Persistence | All claim data, sequences, logs, token records survive restarts via Docker volume mount on `DATA_DIR` |
 | Claim structure | Per claim: `status.yaml`, `extracted_data.json`, `summary.md`, `documents/` |
-| Log retention | 7-day retention, max 2,000 entries in memory |
-| Token records | Last 10,000 AI API call records |
+| Log retention | 10 MB per rotating file, 7 backup files; 2,000 entries in memory for Admin dashboard |
+| Token records | JSONL per month, max `TOKEN_RECORD_MAX` (10,000) records |
 
 ### Security
 
 | Requirement | Description |
 |---|---|
 | Webhook verification | HMAC-SHA256 signature verification on all LINE webhook requests |
+| Malformed webhook | Malformed payloads return HTTP 400 (not 500) |
 | Credentials | API keys in environment variables only — never in source code |
 | PII in logs | National ID numbers and names MUST NOT appear in logs |
 | AI file cleanup | Files uploaded to AI services deleted immediately after analysis |
@@ -466,10 +508,10 @@ Folder structure per claim:
 | External System | Purpose | Method |
 |---|---|---|
 | **LINE Messaging API** | Receive user messages and images; send replies | REST API via `line-bot-sdk` Python v3 |
-| **AI Vision (Gemini / GPT-4 Vision)** | Categorisation, OCR extraction, damage analysis, chat | AI SDK (Python) |
-| **LINE Data API** | Download user-sent images | HTTP GET with Bearer token |
-| **Policy Database** | Verify identity, retrieve coverage | PoC: JSON files. Production: DB or API |
-| **Persistent File Storage** | Claim folders, images, JSON, logs | PoC: Docker volume. Production: Cloud storage (S3/GCS) |
+| **AI Vision (Google Gemini 2.5 Flash)** | Categorisation, OCR extraction, damage analysis, summary generation | `google-generativeai` Python SDK; shared client in `ai/__init__.py` |
+| **LINE Data API** | Download user-sent images | HTTP GET with Bearer token (`LINE_DATA_API_HOST` env var) |
+| **Policy Database** | Verify identity, retrieve coverage | PoC: `mock_data.py` JSON. Production: DB or API |
+| **Persistent File Storage** | Claim folders, images, JSON, YAML, logs, token records | PoC: Docker volume at `DATA_DIR` (default `/data`). Production: Cloud storage (S3/GCS) |
 | **ngrok** | Expose local bot to internet for webhook (PoC only) | Docker container |
 
 ---
@@ -530,10 +572,12 @@ Folder structure per claim:
 ### 12.4 Claim Status Lifecycle
 
 ```
-Submitted → Under Review → Pending → Approved → Paid
-                                   ↘
-                                    Rejected
+Draft → Submitted → Under Review → Pending → Approved → Paid
+                                 ↘
+                                  Rejected
 ```
+
+> **Note:** A new claim enters `Draft` status the moment the Claim ID is generated. Status becomes `Submitted` only after the customer explicitly submits.
 
 ### 12.5 Document Accuracy Tagging (Reviewer)
 
@@ -551,14 +595,16 @@ Submitted → Under Review → Pending → Approved → Paid
 |---|---|---|
 | 1 | Payment processing | Bot submits a claim; payment handled externally |
 | 2 | Real-time policy database connection | PoC uses JSON files; DB integration future phase |
-| 3 | Authentication for web dashboards | Required before production |
+| 3 | Authentication for web dashboards | Required before production (BR-07) |
 | 4 | Push notifications on status changes | Customer uses Claim ID to track; future feature |
 | 5 | Non-car, non-health insurance types | Travel, life, property — out of scope |
 | 6 | Languages beyond Thai + English | Two languages only |
 | 7 | Mobile-responsive internal dashboards | Desktop browser only in PoC |
 | 8 | Automated approval by AI | AI assists; human approves |
 | 9 | Core insurance system integration | Future phase |
-| 10 | Session persistence across restarts | In-memory only; restart clears sessions |
+| 10 | Session persistence across restarts | In-memory `user_sessions` dict; restart clears active sessions |
+| 11 | Wire `handlers/` into `main.py` for production | `handlers/` fully implemented; integration into `main.py` routing is a pending dev task |
+| 12 | Serve dashboard HTML via FastAPI routes | Dashboard HTML files exist; FastAPI `/reviewer`, `/manager`, `/admin` routes not yet added |
 
 ---
 
@@ -572,7 +618,7 @@ Submitted → Under Review → Pending → Approved → Paid
 | A2 | The customer's smartphone camera produces images clear enough for AI OCR |
 | A3 | Policy JSON files are pre-loaded with correct records before go-live |
 | A4 | Customers consent to photos and personal data being processed by a third-party AI service |
-| A5 | The AI Vision model can reliably read standard Thai government documents |
+| A5 | The AI Vision model (Gemini 2.5 Flash) can reliably read standard Thai government documents |
 | A6 | The company has an active LINE Official Account with Messaging API configured |
 
 ### Constraints
@@ -582,8 +628,9 @@ Submitted → Under Review → Pending → Approved → Paid
 | C1 | PoC runs on a single Docker host — no horizontal scaling |
 | C2 | ngrok free tier URL changes on restart; LINE webhook must be re-registered manually |
 | C3 | AI extraction time per document up to 10 seconds depending on image complexity |
-| C4 | AI token usage incurs cost; all calls must be tracked and budgeted |
+| C4 | AI token usage incurs cost; all calls must be tracked and budgeted (`ai/__init__.py` token tracking) |
 | C5 | LINE rate limits apply on messages per second |
+| C6 | Gemini model is `models/gemini-2.5-flash` (overridable via `GEMINI_MODEL` env var) |
 
 ---
 
@@ -625,6 +672,8 @@ Submitted → Under Review → Pending → Approved → Paid
 | R8 | AI token cost exceeds budget | Medium | Medium | Admin dashboard monitors cost; billing alerts; files deleted after use |
 | R9 | Driving license assigned to wrong party | Medium | Medium | Explicit ownership confirmation; reviewer sees both licenses |
 | R10 | ngrok tunnel breaks; LINE webhook stops | High | High | Document re-registration steps; production uses static domain |
+| R11 | `handlers/` not wired into `main.py` for go-live | High | Critical | Integration of new handlers into the request routing is a dev prerequisite before production |
+| R12 | Dashboard HTML not served via FastAPI routes | High | Medium | Add `/reviewer`, `/manager`, `/admin` routes to `main.py` before production |
 
 ---
 
@@ -661,7 +710,42 @@ Submitted → Under Review → Pending → Approved → Paid
 | **Accuracy Rate** | Useful ÷ (Useful + Not Useful) × 100 |
 | **status.yaml** | Per-claim file: status, memo, document list, processing metrics |
 | **extracted_data.json** | Per-claim file: all AI-extracted field values per document |
+| **summary.md** | Per-claim AI-generated bilingual claim summary, written on submission |
 | **sequence.json** | System file persisting claim ID counters across restarts |
+| **Draft** | First claim status — set immediately when Claim ID is generated, before submission |
+| **DATA_DIR** | Environment variable pointing to the persistent storage root (default: `/data`) |
+| **GEMINI_MODEL** | Environment variable selecting the Gemini model (default: `models/gemini-2.5-flash`) |
+| **TOKEN_RECORD_MAX** | Maximum per-month AI token records kept in storage (default: 10,000) |
+
+---
+
+## Appendix: Build Status as of v2.1
+
+### ✅ Built and Tested
+
+| Module / Feature | File(s) | Notes |
+|---|---|---|
+| LINE webhook receive + HMAC verification | `main.py` | Malformed payloads return 400 |
+| Session management (in-memory) | `session_manager.py` | `user_sessions` dict |
+| Claim type detection (keyword FSM) | `handlers/trigger.py`, `constants.py` | CD_KEYWORDS, H_KEYWORDS, TRIGGER_KEYWORDS |
+| Claim ID generation (persistent) | `storage/sequence.py` | Thread-safe, file-backed, survives restarts |
+| Policy lookup — CD + H | `handlers/identity.py` | `search_policies_by_cid`, `search_health_policies_by_cid` |
+| Persistent claim folder + status.yaml + extracted_data.json | `storage/claim_store.py`, `storage/document_store.py` | YAML + JSON per claim |
+| AI document categorisation | `ai/categorise.py` | Returns one of 9 valid categories or "unknown" |
+| AI field extraction per category | `ai/extract.py` | Structured JSON per document type |
+| AI OCR for identity verification | `ai/ocr.py` | `extract_id_from_image` |
+| Document upload loop + ownership confirmation | `handlers/documents.py` | REQUIRED_DOCS, OPTIONAL_DOCS |
+| Claim submission + summary.md generation | `handlers/submit.py` | FR-07, FR-06.6 |
+| AI token tracking | `ai/__init__.py` | Per-call JSONL records in `/data/token_records/` |
+| Eligibility verdict (CD) | `claim_engine.py` | Insurance class × counterpart matrix |
+| Dashboard HTML | `dashboards/*.html` | reviewer.html, manager.html, admin.html |
+
+### 📄 Implemented but Not Yet Wired into Production Request Routing
+
+| Item | Detail |
+|---|---|
+| `handlers/` used in `main.py` | `main.py` still uses legacy flow; `handlers/` modules called via tests only — must be integrated |
+| FastAPI routes for dashboards | `/reviewer`, `/manager`, `/admin` routes not yet added to `main.py`; HTML files exist |
 
 ---
 

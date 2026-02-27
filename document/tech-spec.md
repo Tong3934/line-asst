@@ -1,32 +1,29 @@
 # Technical Specification — LINE Insurance Claim Bot
 ## เช็คสิทธิ์ & เคลมประกันด่วน — v2.0
 
-**Spec Version:** 2.0  
+**Spec Version:** 2.1  
 **BRD Reference:** [business-requirement.md](business-requirement.md) v2.0  
 **User Journey Reference:** [user-journey.md](user-journey.md) v2.0  
-**Last Updated:** February 2026  
+**Last Updated:** February 26, 2026  
 **Authors:** Technical Development Team
 
 ---
 
-## ⚠️ Current Implementation Gap
+## ⚠️ Implementation Status Overview
 
-The existing codebase implements **BRD v1.0** (eligibility check only).  
-**BRD v2.0** requires significant new functionality. This document describes **both** what exists and what must be built.
+This document reflects the **actual current state** of the codebase as of February 26, 2026.
 
-| Area | v1.0 (Exists) | v2.0 (Required — Build) |
+| Area | Status | Notes |
 |---|---|---|
-| Claim types | Car Damage only | + Health (H) |
-| Trigger | Single keyword only | Keyword detection from free text |
-| Claim ID | None | `CD-YYYYMMDD-NNNNNN` / `H-YYYYMMDD-NNNNNN` |
-| Identity verification | CID / plate / name text | + AI OCR from ID card / driving license photo |
-| Document types | Damage photo only | 9 document types with per-type field extraction |
-| Data extraction | Damage analysis (unstructured text) | Structured JSON per document type |
-| Storage | In-memory sessions only | Persistent per-claim folder on Docker volume |
-| Claim submission | Not implemented | Full submit + status lifecycle |
-| Web dashboards | None | Reviewer, Manager, Admin |
-| Language | Thai only | Thai + English (bilingual, every message) |
-| AI token tracking | None | Per-call tracking, Admin dashboard |
+| Core bot (v1.0 flow) | ✅ Live | Active in `main.py`; v1.0 state names, CD-only, damage-analysis flow |
+| New AI package (`ai/`) | ✅ Built | `ocr`, `categorise`, `extract`, `analyse_damage` — all implemented |
+| New Storage package (`storage/`) | ✅ Built | `claim_store`, `document_store`, `sequence` — all implemented |
+| New Handlers (`handlers/`) | ✅ Built | `trigger`, `identity`, `documents`, `submit` — all implemented |
+| Web Dashboards (`dashboards/`) | ✅ Built | `reviewer.html`, `manager.html`, `admin.html` — all implemented |
+| Tests | ✅ 338 passing | 10 test files; `pytest tests/ -v` |
+| **Wire v2.0 packages into `main.py`** | ❌ Gap | `main.py` still runs v1.0 monolithic logic; new packages not yet imported |
+| Health (H) claim type | ❌ Not yet | v2.0 handler package supports it; `main.py` does not route to it |
+| `mock_chat.py` | ❌ Missing | Referenced in `docker-compose.yml`; `--profile dev` will crash |
 
 ---
 
@@ -34,7 +31,7 @@ The existing codebase implements **BRD v1.0** (eligibility check only).
 
 1. [System Architecture](#1-system-architecture)
 2. [Technology Stack](#2-technology-stack)
-3. [Repository Structure (Target)](#3-repository-structure-target)
+3. [Repository Structure (Current)](#3-repository-structure-current)
 4. [Environment Variables](#4-environment-variables)
 5. [Data Models](#5-data-models)
 6. [Conversation State Machine](#6-conversation-state-machine)
@@ -47,7 +44,7 @@ The existing codebase implements **BRD v1.0** (eligibility check only).
 13. [LINE Flex Message Components](#13-line-flex-message-components)
 14. [Docker & Deployment](#14-docker--deployment)
 15. [Non-Functional Requirements](#15-non-functional-requirements)
-16. [Migration Notes — v1 → v2](#16-migration-notes--v1--v2)
+16. [Remaining Migration Steps](#16-remaining-migration-steps)
 17. [Open Questions](#17-open-questions)
 
 ---
@@ -95,14 +92,14 @@ The existing codebase implements **BRD v1.0** (eligibility check only).
 | Reviewer | `GET /reviewer` | Claims review dashboard |
 | Manager | `GET /manager` | Analytics dashboard |
 | Admin | `GET /admin` | Logs + AI token usage |
-| LINE Platform | `POST /webhook` | Webhook events |
-| Health probe | `GET /health` | CI / monitoring |
+| LINE Platform | `POST /webhook` or `POST /callback` | Webhook events (both paths handled) |
+| Health probe | `GET /health` | LINE + Gemini config status |
 
 ---
 
 ## 2. Technology Stack
 
-| Layer | Technology | Notes |
+| Layer | Technology | Status |
 |---|---|---|
 | Language | Python 3.11 | Existing |
 | Web framework | FastAPI | Existing |
@@ -112,56 +109,77 @@ The existing codebase implements **BRD v1.0** (eligibility check only).
 | Image processing | Pillow | Existing |
 | HTTP client | httpx | Existing |
 | Config | python-dotenv | Existing |
-| YAML read/write | `pyyaml` | **Add to requirements.txt** |
-| Web dashboard HTML | Jinja2 templates served by FastAPI | **New** |
+| YAML read/write | `pyyaml` | ✅ Present in `requirements.txt` |
+| Web dashboard HTML | Jinja2 templates | ✅ Present in `requirements.txt` |
+| Async file I/O | `aiofiles` | ✅ Present in `requirements.txt` |
 | Containerisation | Docker + Docker Compose | Existing |
-| Tunnelling (dev) | ngrok | Existing |
-| Mock chat UI (dev) | `mock_chat.py` | Added in v1.1 |
+| Tunnelling (dev) | ngrok via `pyngrok` | ✅ Present in `requirements.txt` |
+| Test framework | pytest + pytest-asyncio | See `requirements_test.txt` |
 
 ---
 
-## 3. Repository Structure (Target)
+## 3. Repository Structure (Current)
 
 ```
 line-asst/
-├── main.py                  # FastAPI app — bot handlers + dashboard endpoints
+├── main.py                  # FastAPI app — bot handlers + dashboard endpoints (359 lines)
+├── config.py                # NEW — env vars, LINE config, Gemini model init
+├── session_manager.py       # NEW — user_sessions dict + get/set/reset/process_search_result
+├── claim_engine.py          # NEW — extract_info_from_image, analyze_damage, start_claim_analysis
 ├── flex_messages.py         # All LINE Flex Message / QuickReply builders
-├── mock_data.py             # Policy lookup — replace with DB in production
-├── mock_chat.py             # Dev-only mock LINE platform UI
+├── constants.py             # Shared constants: model, pricing, DATA_DIR, keywords, categories
+├── mock_data.py             # Policy lookup (mock DB — ~1.5 MB)
 ├── ngrok.py                 # Dev-only pyngrok tunnel launcher
 │
-├── handlers/                # NEW — one file per bot conversation topic
+├── handlers/                # v2.0 conversation handlers (BUILT, not yet wired into main.py)
 │   ├── __init__.py
 │   ├── trigger.py           # Claim type detection, session init, Claim ID
 │   ├── identity.py          # Policy verification (text + OCR path)
-│   ├── documents.py         # Upload loop, categorisation, extraction, ownership
-│   └── submit.py            # Completeness check + submission
+│   ├── documents.py         # Upload loop, categorise, extract, ownership ✅ IMPLEMENTED
+│   └── submit.py            # Completeness check + submission ✅ IMPLEMENTED
 │
-├── ai/                      # NEW — all AI operations isolated here
-│   ├── __init__.py
-│   ├── categorise.py        # Categorise document image → type string
-│   ├── extract.py           # Extract structured JSON from categorised image
-│   ├── analyse_damage.py    # Eligibility verdict (existing, refactored)
-│   └── ocr.py               # ID card / driving license OCR (existing, refactored)
+├── ai/                      # All AI operations isolated here
+│   ├── __init__.py          # Shared Gemini client + _call_gemini wrapper + token tracking
+│   ├── categorise.py        # categorise_document(image_bytes) → str
+│   ├── extract.py           # extract_fields(image_bytes, category) → Dict
+│   ├── analyse_damage.py    # analyse_damage(...) → str
+│   └── ocr.py               # extract_id_from_image(image_bytes) → Dict
 │
-├── storage/                 # NEW — all file I/O isolated here
+├── storage/                 # All file I/O isolated here
 │   ├── __init__.py
 │   ├── claim_store.py       # Read/write status.yaml, extracted_data.json
 │   ├── document_store.py    # Save/read document image files
 │   └── sequence.py          # Claim ID counter (sequence.json)
 │
-├── dashboards/              # NEW — web dashboard HTML templates + routes
+├── dashboards/              # Web dashboard HTML templates ✅ ALL BUILT
 │   ├── reviewer.html
 │   ├── manager.html
 │   └── admin.html
 │
-├── requirements.txt         # + pyyaml, jinja2
+├── tests/                   # Test suite — 338 tests passing
+│   ├── __init__.py
+│   ├── conftest.py          # Shared fixtures (app_client, mocks)
+│   ├── test_data.py         # Fixture data & canned responses
+│   ├── test_api_endpoints.py
+│   ├── test_business_logic.py
+│   ├── test_claim_engine.py
+│   ├── test_conversation_flows.py
+│   ├── test_flex_messages.py
+│   ├── test_session_manager.py
+│   └── test_webhook_security.py
+│
+├── conftest.py              # Root-level conftest (project-wide fixtures)
+├── pytest.ini               # Test config: markers, asyncio_mode=auto, timeout=30
+├── requirements.txt         # Runtime dependencies
+├── requirements_test.txt    # Test-only dependencies
 ├── dockerfile
-├── docker-compose.yml       # + /data volume mount
-├── entrypoint.sh
-├── nginx.conf
+├── docker-compose.yml       # Has claim-data volume; mock-chat profile
+├── entrypoint.sh            # git-pull + data dir init + sequence.json seed
+├── nginx.conf               # Inactive (reverse proxy config, not in compose)
 ├── .env.example
 ├── .gitignore
+│
+├── SYSTEM_SPEC.md           # Concise system spec (for team onboarding)
 │
 └── document/
     ├── tech-spec.md         # This file
@@ -170,11 +188,13 @@ line-asst/
     └── document-verify.md
 ```
 
+> ⚠️ **MISSING:** `mock_chat.py` — `docker-compose.yml` runs `python mock_chat.py` for the `mock-chat` service. `docker compose --profile dev up` will crash until this file is created.
+
 ---
 
 ## 4. Environment Variables
 
-All variables loaded from `.env` via `python-dotenv`. Copy `.env.example` → `.env`.
+All variables loaded from `.env` via `python-dotenv` in `config.py`. The app raises `ValueError` on startup if required variables are missing.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -184,8 +204,11 @@ All variables loaded from `.env` via `python-dotenv`. Copy `.env.example` → `.
 | `NGROK_AUTHTOKEN` | ✅ (Docker) | — | ngrok tunnel auth token |
 | `PORT` | ❌ | `8000` | Uvicorn listen port |
 | `DATA_DIR` | ❌ | `/data` | Root path for the persistent volume |
-| `LINE_API_HOST` | ❌ | `https://api.line.me` | Override to `http://localhost:8001` for mock testing |
-| `LINE_DATA_API_HOST` | ❌ | `https://api-data.line.me` | Override to `http://localhost:8001` for mock testing |
+| `GEMINI_MODEL` | ❌ | `models/gemini-2.5-flash` | Override Gemini model name |
+| `GEMINI_PRICE_INPUT` | ❌ | `0.00035` | USD per 1K input tokens |
+| `GEMINI_PRICE_OUTPUT` | ❌ | `0.00105` | USD per 1K output tokens |
+| `LINE_API_HOST` | ❌ | `https://api.line.me` | Override for mock testing |
+| `LINE_DATA_API_HOST` | ❌ | `https://api-data.line.me` | Override for mock testing |
 | `BOT_URL` | ❌ | `http://localhost:8000` | Used by `mock_chat.py` to reach the bot |
 | `REPO_URL` | ❌ | — | Git repo URL (auto-pull via `entrypoint.sh`) |
 | `BRANCH` | ❌ | — | Git branch for auto-pull |
@@ -196,63 +219,61 @@ All variables loaded from `.env` via `python-dotenv`. Copy `.env.example` → `.
 
 ### 5.1 Session (`user_sessions` dict — in-memory)
 
+Managed by `session_manager.py`. `user_sessions` is a module-level dict imported by `main.py`.
+
 ```python
+# v1.0 active states (current main.py flow)
 user_sessions: Dict[str, Dict] = {
     "<line_user_id>": {
-        # ── Core state ──
         "state":           str,          # See §6 for all valid states
+        "policy_info":     Dict,         # Full policy record from mock_data
+        "has_counterpart": str | None,   # "มีคู่กรณี" | "ไม่มีคู่กรณี"
+        "search_results":  List[Dict],   # Populated in vehicle-selection state
+        "temp_image_bytes": bytes,       # Damage image bytes (v1.0 flow)
+        "additional_info": str | None,   # Free-text incident description
+
+        # v2.0 fields (used by handlers/ package when wired in)
         "claim_id":        str,          # e.g. "CD-20260226-000001"
         "claim_type":      str,          # "CD" | "H"
-
-        # ── Policy (set after verification) ──
-        "policy_info":     Dict,         # Full policy record from storage
-
-        # ── Car Damage specific ──
-        "has_counterpart": str | None,   # "มีคู่กรณี" | "ไม่มีคู่กรณี"
-        "search_results":  List[Dict],   # Populated only in vehicle-selection state
-
-        # ── Document tracking ──
         "uploaded_docs":   Dict[str, str],  # {doc_category: filename}
-        "awaiting_ownership_for": str | None,  # temp filename pending ownership confirm
-
-        # ── Optional ──
-        "additional_info": str | None,   # Free-text incident description
+        "awaiting_ownership_for": Dict | str | None,  # pending DL assignment
     }
 }
 ```
 
 **State is the single source of truth** for routing every incoming message or image.
-Do NOT branch on any field other than `state` to decide how to respond.
 
 ---
 
 ### 5.2 Policy Record
 
-Two flavours — Car Damage and Health. Both stored as Python dicts (PoC: from `mock_data.py`; Production: from DB/API).
+Two flavours — Car Damage and Health. Both stored as Python dicts (PoC: from `mock_data.py`).
 
 **Car Damage Policy:**
 
 ```python
 {
     "policy_number":          str,   # "CD-2026-001234"
-    "id_card_number":         str,   # 13-digit string (no dashes)
-    "title_name":             str,   # "นาย" | "นาง" | "นางสาว"
-    "first_name":             str,   # strip() before use — may have trailing space
+    "id_card_number":         str,   # 13-digit string
+    "title_name":             str,
+    "first_name":             str,   # may have trailing space — use .strip()
     "last_name":              str,
     "phone":                  str,
-    "vehicle_plate":          str,
+    "plate":                  str,   # "กก 1234" (used in mock_data)
+    "car_model":              str,   # used in claim_engine prompts
+    "car_year":               str,
     "vehicle_brand":          str,
     "vehicle_model":          str,
     "vehicle_year":           str,
     "vehicle_color":          str,
     "coverage_type":          str,   # "ชั้น 1" | "ชั้น 2+" | "ชั้น 2" | "ชั้น 3+" | "ชั้น 3"
     "coverage_amount":        int,   # THB
-    "deductible":             int,   # THB (ค่าเสียหายส่วนแรก)
+    "deductible":             int,   # THB
     "insurance_company":      str,
     "policy_start":           str,   # "YYYY-MM-DD"
     "policy_end":             str,   # "YYYY-MM-DD"
     "status":                 str,   # "active" | "expired" | "inactive"
-    "policy_document_base64": str | None,  # PDF for damage analysis AI prompt
+    "policy_document_base64": str | None,  # Base64 PDF for damage analysis
 }
 ```
 
@@ -282,8 +303,8 @@ Two flavours — Car Damage and Health. Both stored as Python dicts (PoC: from `
 
 ```
 CD-20260226-000001/
-  status.yaml             ← claim metadata (see 5.4)
-  extracted_data.json     ← all AI field extractions (see 5.5)
+  status.yaml             ← claim metadata (see §5.4)
+  extracted_data.json     ← all AI field extractions (see §5.5)
   summary.md              ← AI-generated claim summary (generated on submit)
   documents/
     driving_license_customer_20260226_120000.jpg
@@ -310,7 +331,7 @@ documents:
   - category: "driving_license_customer"
     filename: "driving_license_customer_20260226_120000.jpg"
     useful: null                      # null | true | false (set by Reviewer)
-  - category: "vehicle_damage_photo"
+  - category: "vehicle_damage_photo_1"
     filename: "vehicle_damage_photo_1_20260226_120030.jpg"
     useful: null
 metrics:
@@ -322,7 +343,7 @@ metrics:
 
 ### 5.5 `extracted_data.json` Schema
 
-Only keys relevant to the claim type are populated. Fields not read by AI are stored as `null`.
+Only keys relevant to the claim type are populated. Fields not read by AI are stored as `null`.  
 All dates stored as `YYYY-MM-DD` (Gregorian; convert from Buddhist Era where needed — see §8.4).
 
 **Car Damage:**
@@ -348,16 +369,14 @@ All dates stored as `YYYY-MM-DD` (Gregorian; convert from Buddhist Era where nee
     "engine_number": "2AR1234567",
     "model_year": "2024"
   },
-  "damage_photos": [
-    {
-      "filename": "vehicle_damage_photo_1_20260226_120030.jpg",
-      "damage_location": "ประตูซ้ายหน้า",
-      "damage_description": "รอยบุบและรอยขูดขีด",
-      "severity": "moderate",
-      "gps_lat": 13.7563,
-      "gps_lon": 100.5018
-    }
-  ],
+  "vehicle_damage_photo_1": {
+    "filename": "vehicle_damage_photo_1_20260226_120030.jpg",
+    "damage_location": "ประตูซ้ายหน้า",
+    "damage_description": "รอยบุบและรอยขูดขีด",
+    "severity": "moderate",
+    "gps_lat": 13.7563,
+    "gps_lon": 100.5018
+  },
   "vehicle_location_photo": {
     "filename": "vehicle_location_photo_20260226_120045.jpg",
     "location_description": "ถนนพระราม 9",
@@ -391,14 +410,12 @@ All dates stored as `YYYY-MM-DD` (Gregorian; convert from Buddhist Era where nee
     "diagnosis": "...", "treatment": "...",
     "admission_date": "...", "discharge_date": "..."
   },
-  "medical_receipts": [
-    {
-      "filename": "receipt_1_20260226_130000.jpg",
-      "hospital_name": "...", "billing_number": "...",
-      "total_paid": 4500, "date": "...",
-      "items": [{"description": "...", "amount": 4500}]
-    }
-  ]
+  "receipt_1": {
+    "filename": "receipt_1_20260226_130000.jpg",
+    "hospital_name": "...", "billing_number": "...",
+    "total_paid": 4500, "date": "...",
+    "items": [{"description": "...", "amount": 4500}]
+  }
 }
 ```
 
@@ -415,7 +432,7 @@ All dates stored as `YYYY-MM-DD` (Gregorian; convert from Buddhist Era where nee
 
 - Incremented atomically at claim creation.
 - Stored at `{DATA_DIR}/sequence.json`.
-- **Must survive container restarts** — mounted on the persistent volume.
+- Seeded by `entrypoint.sh` on first run.
 - Format: `{type}-{YYYYMMDD}-{counter:06d}` → `CD-20260226-000013`
 
 ---
@@ -428,7 +445,7 @@ Submitted → Under Review → Pending → Approved → Paid
                           Rejected
 ```
 
-Valid transitions enforced in the Reviewer dashboard save handler:
+Valid transitions enforced in the Reviewer dashboard and in `constants.py`:
 
 | From | Allowed next values |
 |---|---|
@@ -441,70 +458,65 @@ Valid transitions enforced in the Reviewer dashboard save handler:
 
 ## 6. Conversation State Machine
 
-Each user session is identified by their LINE `user_id`. The active state is always in `user_sessions[user_id]["state"]`.
+### 6.1 Active v1.0 States (current `main.py`)
 
-### Full State Diagram
+These are the state names that `main.py` currently uses. The v1.0 flow handles Car Damage (CD) with eligibility analysis only.
+
+| State | Meaning | Handler |
+|---|---|---|
+| `idle` / `None` | No active session | Falls to welcome + QuickReply |
+| `waiting_for_info` | Asking CID / plate / name / image | `handle_text_message`, `handle_image_message` |
+| `waiting_for_vehicle_selection` | Multiple policies found | `handle_text_message` |
+| `waiting_for_counterpart` | CD: asking มีคู่กรณี / ไม่มีคู่กรณี | `handle_text_message` |
+| `waiting_for_image` | Damage photo expected | `handle_image_message` |
+| `waiting_for_additional_info` | Free-text incident description | `handle_text_message` |
+| `completed` | Analysis done | `handle_text_message` |
+| `waiting_for_claim_documents` | Document upload phase (basic, no categorisation) | `handle_image_message` |
+
+### 6.2 v2.0 Target States (defined in `handlers/` package)
+
+These states are implemented in the `handlers/` package but **not yet wired into `main.py`**:
+
+`idle` → `detecting_claim_type` → `verifying_policy` → `waiting_for_vehicle_selection` → `waiting_for_counterpart` → `uploading_documents` → `awaiting_ownership` → `ready_to_submit` → `submitted`
+
+> ⚠️ **Critical for the next developer:** The v1.0 state names and the v2.0 state names are **different**. When wiring v2.0 into `main.py`, the entire state machine must be rewritten using the v2.0 names. Do NOT mix them.
+
+### 6.3 Full v2.0 State Diagram (Target)
 
 ```
-                  ┌────────────────────────────────────────────────────────────────┐
-                  │  Cancel keywords ("ยกเลิก","cancel","เริ่มใหม่") from any state │
-                  ▼                                                                │
-              [idle]                                                               │
-                  │ CD/H keyword or "เช็คสิทธิ์เคลมด่วน" detected                 │
-                  ▼                                                                │
-          [detecting_claim_type]                                                   │
-                  │ CD or H confirmed                                              │
-                  ▼                                                                │
-          [verifying_policy]  ◄── retry if not found / expired                    │
-                  │ Policy found                                                   │
-         ┌────────┴────────┐                                                       │
-         │ CD              │ H                                                     │
-         ▼                 └──────────────────────────┐                           │
-  [waiting_for_counterpart]                           │                           │
-         │ Answered (or single policy auto-selected)  │                           │
-         ▼                                            ▼                           │
-  [uploading_documents] ◄─────────────── [uploading_documents]                   │
-         │                                                                        │
-         │  Driving license received (CD with-counterpart only)                  │
-         ▼                                                                        │
-  [awaiting_ownership]                                                            │
-         │ Ownership confirmed                                                    │
-         ▼                                                                        │
-  [uploading_documents]  ◄── loop until all required docs received                │
-         │ All docs complete                                                       │
-         ▼                                                                        │
-  [ready_to_submit]                                                               │
-         │ Customer taps Submit                                                   │
-         ▼                                                                        │
-     [submitted] ────────────────────────────────────────────────────────────────┘
+              ┌─────────────────────────────────────────────────────────────────┐
+              │  Cancel keywords ("ยกเลิก","cancel","เริ่มใหม่") from any state │
+              ▼                                                                  │
+          [idle]                                                                 │
+              │ CD/H keyword or "เช็คสิทธิ์เคลมด่วน" detected                  │
+              ▼                                                                  │
+      [detecting_claim_type]                                                     │
+              │ CD or H confirmed                                                │
+              ▼                                                                  │
+      [verifying_policy]  ◄── retry if not found / expired                      │
+              │ Policy found                                                     │
+     ┌────────┴────────┐                                                         │
+     │ CD              │ H                                                       │
+     ▼                 └──────────────────────────┐                             │
+[waiting_for_counterpart]                         │                             │
+     │ Answered                                   │                             │
+     ▼                                            ▼                             │
+[uploading_documents] ◄────────────── [uploading_documents]                    │
+     │  Driving license (CD with-counterpart)                                   │
+     ▼                                                                          │
+[awaiting_ownership]                                                             │
+     │ Ownership confirmed                                                       │
+     ▼                                                                          │
+[uploading_documents]  ◄── loop until all required docs received                │
+     │ All docs complete                                                         │
+     ▼                                                                          │
+[ready_to_submit]                                                               │
+     │ Customer taps Submit                                                      │
+     ▼                                                                          │
+ [submitted] ─────────────────────────────────────────────────────────────────┘
 ```
 
-### State Transition Table
-
-| State | Input | Next State | Bot Action |
-|---|---|---|---|
-| `idle` | CD keywords in free text | `detecting_claim_type` | Confirm "Car Damage"; show Claim ID |
-| `idle` | H keywords in free text | `detecting_claim_type` | Confirm "Health claim"; show Claim ID |
-| `idle` | Ambiguous / both keyword sets | `idle` | Ask "🚗 ประกันรถ or 🏥 ประกันสุขภาพ?" |
-| `idle` | "เช็คสิทธิ์เคลมด่วน" | `detecting_claim_type` | Show claim type selector QuickReply |
-| `detecting_claim_type` | "ประกันรถ" / car button | `verifying_policy` | Generate CD Claim ID; ask for CID |
-| `detecting_claim_type` | "ประกันสุขภาพ" / health button | `verifying_policy` | Generate H Claim ID; ask for CID |
-| `verifying_policy` | Text: 13-digit CID | next or retry | Look up policy; on match → show policy card |
-| `verifying_policy` | Image: ID card or DL | next or retry | OCR → look up by extracted CID |
-| `verifying_policy` | Multiple policies found | `waiting_for_vehicle_selection` | Carousel of vehicles |
-| `waiting_for_vehicle_selection` | "เลือกทะเบียน {plate}" | `waiting_for_counterpart` (CD) | Show policy card + counterpart QuickReply |
-| `waiting_for_counterpart` | "มีคู่กรณี" | `uploading_documents` | Show document checklist |
-| `waiting_for_counterpart` | "ไม่มีคู่กรณี" | `uploading_documents` | Show document checklist (no counterpart DL) |
-| `uploading_documents` | Image | `awaiting_ownership` or `uploading_documents` | Categorise → extract → confirm + progress |
-| `uploading_documents` | Text | `uploading_documents` | "📷 Please send a photo" |
-| `awaiting_ownership` | "ของฉัน (ฝ่ายเรา)" | `uploading_documents` | Assign `driving_license_customer`; update checklist |
-| `awaiting_ownership` | "คู่กรณี (อีกฝ่าย)" | `uploading_documents` | Assign `driving_license_other_party`; update checklist |
-| `uploading_documents` | All required docs uploaded | `ready_to_submit` | Summary card + Submit button |
-| `ready_to_submit` | "ส่งคำร้อง" / "Submit" | `submitted` | Set status.yaml; push Claim ID confirmation |
-| `submitted` | Any | `submitted` | Show Claim ID; offer to start new |
-| Any | Cancel keyword | `idle` | "Session cancelled / ยกเลิกแล้ว. Send a message to start new." |
-
-### Required Documents Per Claim Type
+### 6.4 Required Documents Per Claim Type
 
 | Claim Type | Sub-type | Required storage keys |
 |---|---|---|
@@ -519,108 +531,102 @@ Optional (accepted but not blocking submission):
 | CD | `vehicle_location_photo` |
 | H | `discharge_summary` |
 
+Defined in `constants.py` as `REQUIRED_DOCS` and `OPTIONAL_DOCS`.
+
 ---
 
 ## 7. LINE Bot — Message Handlers
 
-### 7.1 Text Message Handler (`handle_text_message`)
+### 7.1 Module Architecture
 
-Evaluate branches **in order** — first match wins:
+`main.py` delegates to three focused modules:
 
-```
-1. Cancel keyword?                      → clear session; state = "idle"; send cancel ack
-2. state == "idle"                      → run claim-type keyword detection (FR-01.2 – FR-01.5)
-3. state == "detecting_claim_type"      → handle clarification button press
-4. state == "verifying_policy"          → policy lookup by typed 13-digit CID or name
-5. state == "waiting_for_vehicle_selection" → handle "เลือกทะเบียน {plate}"
-6. state == "waiting_for_counterpart"   → record has_counterpart; advance state
-7. state == "awaiting_ownership"        → assign driving license side; advance state
-8. state == "uploading_documents"       → send "📷 กรุณาส่งรูปภาพ / Please send a photo"
-9. state == "ready_to_submit"           → handle "ส่งคำร้อง" trigger
-10. state == "submitted"               → Claim ID reminder message
-11. default                            → welcome + "ส่งข้อความเพื่อเริ่มต้น / Send a message to start"
-```
+| Module | Responsibility |
+|---|---|
+| `config.py` | Load env vars; create LINE `Configuration`, `WebhookHandler`, Gemini model |
+| `session_manager.py` | `user_sessions` dict; `get_session`, `set_state`, `reset_session`, `process_search_result` |
+| `claim_engine.py` | `extract_info_from_image_with_gemini`, `analyze_damage_with_gemini`, `start_claim_analysis`, `extract_phone_from_response` |
 
-**Claim-type keyword lists (FR-01.3 / FR-01.4):**
+### 7.2 Text Message Handler (`handle_text_message`) — v1.0 Active Flow
 
-```python
-CD_KEYWORDS = ["รถ","ชน","เฉี่ยว","ขโมย","หาย","car","vehicle","accident","damage","crash"]
-H_KEYWORDS  = ["เจ็บ","ป่วย","ผ่าตัด","โรงพยาบาล","health","sick","hospital","medical","surgery"]
-```
-
-If both sets yield at least one match → ambiguous → ask user to clarify.
-
----
-
-### 7.2 Image Message Handler (`handle_image_message`)
+Evaluation order (first match wins):
 
 ```
-1. If state not in ["verifying_policy", "uploading_documents"]:
-   → reply "⚠️ Please complete previous steps first / กรุณาทำตามขั้นตอนก่อนส่งรูป"
-   → return
-
-2. Send immediate reply_message acknowledgement (consumes the reply token):
-   state == "verifying_policy" → "⏳ กำลังค้นหา... / Searching..."
-   state == "uploading_documents" → "⏳ กำลังวิเคราะห์... / Analysing (10–30s)..."
-
-3. Download image from LINE Data API:
-   GET {_line_data_api_host}/v2/bot/message/{message_id}/content
-   Authorization: Bearer {LINE_CHANNEL_ACCESS_TOKEN}
-
-4. Branch: state == "verifying_policy"
-   → ai.ocr.extract_id_from_image(image_bytes)
-   → If type=="id_card"      → search_policies_by_cid(value)
-   → If type=="license_plate"→ search_policies_by_plate(value)
-   → If unknown              → push "❌ ไม่พบข้อมูลในรูปภาพ กรุณาลองใหม่"
-   → Call process_search_result(..., use_push=True)
-
-5. Branch: state == "uploading_documents"
-   a. category = ai.categorise.categorise_document(image_bytes)
-   b. If category == "unknown":
-      → push "❌ ไม่รู้จักเอกสาร / Unknown document. Please send one of: {required list}"
-      → return
-
-   c. fields = ai.extract.extract_fields(image_bytes, category)
-
-   d. If driving license AND has_counterpart == "มีคู่กรณี":
-      → store temp image bytes in session["awaiting_ownership_for"]
-      → state = "awaiting_ownership"
-      → push ownership QuickReply (create_ownership_question_flex)
-      → return
-
-   e. filename = storage.document_store.save_document(claim_id, category, image_bytes)
-   f. storage.claim_store.update_extracted_data(claim_id, category, fields)
-   g. Mark uploaded_docs[category] = filename in session
-   h. storage.claim_store update document list in status.yaml
-   i. missing = check_missing_docs(session)
-   j. push create_doc_received_flex(category, fields, missing)
-   k. If not missing:
-      → state = "ready_to_submit"
-      → push create_submit_prompt_flex(claim_id, doc_count)
+1. text == "เช็คสิทธิ์เคลมด่วน"              → state = "waiting_for_info"; send request_info_flex
+2. state == "waiting_for_info"              → regex-based CID/phone/plate/name search
+3. state == "waiting_for_vehicle_selection" → "เลือกรถ:{plate}" → process_search_result
+4. state == "waiting_for_counterpart"       → record has_counterpart; state = "waiting_for_image"
+5. state == "waiting_for_additional_info"   → pass additional_info to start_claim_analysis
+6. state == "completed" + text == "ส่งเคลม" → state = "waiting_for_claim_documents"
+7. state == "completed" + text == "จบการสนทนา" → reset session
+8. state == "waiting_for_claim_documents" + text == "เสร็จสิ้น" → reset session; thank user
+9. fallback (idle/None/completed)          → welcome + QuickReply "เช็คสิทธิ์เคลมด่วน"
 ```
+
+**Policy lookup in `waiting_for_info`:**
+- `^\d{13}$` → `search_policies_by_cid`
+- `^\d{9,10}$` → `search_policies_by_phone`
+- Plate text → `search_policies_by_plate`
+- Else → `search_policies_by_name`
+
+### 7.3 Image Message Handler (`handle_image_message`) — v1.0 Active Flow
+
+```
+Download image: GET https://api-data.line.me/v2/bot/message/{id}/content
+
+state == "waiting_for_info":
+  → extract_info_from_image_with_gemini (OCR)
+  → search by id_card CID or license_plate
+  → process_search_result(..., use_push=True)
+
+state == "waiting_for_image":
+  → store image_bytes in session["temp_image_bytes"]
+  → state = "waiting_for_additional_info"
+  → show additional_info_prompt_flex
+
+state == "waiting_for_claim_documents":
+  → acknowledge receipt; remind user to type "เสร็จสิ้น"
+
+else:
+  → "กรุณาทำตามขั้นตอนก่อน" message
+```
+
+> ⚠️ **v2.0 gap:** The `handlers/documents.py` pipeline (categorise → extract → ownership QuickReply → checklist) is implemented and tested but `handle_image_message` in `main.py` does not yet call it.
+
+### 7.4 process_search_result (in `session_manager.py`)
+
+Handles all three policy-count outcomes:
+
+| Outcome | State | Bot action |
+|---|---|---|
+| 0 policies | unchanged | Error message |
+| >1 policies | `waiting_for_vehicle_selection` | `create_vehicle_selection_flex` carousel |
+| 1 policy | `waiting_for_counterpart` | `create_policy_info_flex` + counterpart QuickReply |
 
 ---
 
 ## 8. AI Integration (Google Gemini)
 
-All Gemini calls share a wrapper that:
-- Records token usage (prompt + completion tokens) → `/data/token_records/YYYY-MM.jsonl`
+All Gemini calls in the `ai/` package share a wrapper (`_call_gemini` in `ai/__init__.py`) that:
+- Records token usage → `/data/token_records/YYYY-MM.jsonl`
 - Catches `429 Resource Exhausted` → returns user-friendly retry message
 - Deletes any uploaded Gemini files in a `finally` block
 
 ### 8.1 `ai.ocr.extract_id_from_image(image_bytes) → Dict`
 
-**Existing** `extract_info_from_image_with_gemini` — rename and move to `ai/ocr.py`.
+Formerly `extract_info_from_image_with_gemini` in `main.py`/`claim_engine.py`.
 
 - Returns `{"type": "id_card"|"license_plate"|"unknown", "value": str|None}`
+
+> Note: `claim_engine.py` still contains its own `extract_info_from_image_with_gemini` for the v1.0 flow. When `main.py` is updated to use v2.0 packages, `claim_engine.py` OCR will be replaced by `ai.ocr`.
 
 ---
 
 ### 8.2 `ai.categorise.categorise_document(image_bytes) → str`
 
-**New.** Single Gemini vision call.
+Single Gemini vision call.
 
-Valid return values (exact strings, enforced in code):
+Valid return values (exact strings; defined in `constants.VALID_CATEGORIES`):
 
 ```
 driving_license          vehicle_registration     citizen_id_card
@@ -635,34 +641,27 @@ If response is not in the above set → treat as `"unknown"`.
 
 ### 8.3 `ai.extract.extract_fields(image_bytes, category) → Dict`
 
-**New.** Different prompt per category. All prompts must:
+Different prompt per category. All prompts enforce:
 
-1. **Buddhist Era conversion (BR-02):** Thai documents use พ.ศ. — instruct AI: "Convert all dates from Buddhist Era to Gregorian by subtracting 543. Return all dates as YYYY-MM-DD."
+1. **Buddhist Era conversion (BR-02):** "Convert all dates from Buddhist Era to Gregorian by subtracting 543. Return all dates as YYYY-MM-DD."
 2. **Null for unreadable fields (FR-04.3):** "If a field cannot be read clearly, return null. Never guess."
-3. **GPS extraction:** For `vehicle_damage_photo` and `vehicle_location_photo`, extract GPS decimal degrees from EXIF before calling Gemini:
-   ```python
-   # Extract EXIF GPS before the AI call
-   from PIL import Image as PILImage
-   from PIL.ExifTags import TAGS, GPSTAGS
-   img = PILImage.open(io.BytesIO(image_bytes))
-   exif = img._getexif() or {}
-   gps = _parse_gps_exif(exif)   # returns (lat, lon) or (None, None)
-   ```
-   Pass GPS into the fields dict directly; do not ask Gemini to read EXIF.
+3. **GPS extraction:** For `vehicle_damage_photo` and `vehicle_location_photo`, extract GPS decimal degrees from EXIF via Pillow before calling Gemini. Do not ask Gemini to read EXIF.
 4. **JSON only:** "Return only valid JSON. No markdown, no prose."
 
-Returns a dict matching the schema in §5.5. On error returns `{}` with all keys as `null`.
+Returns a dict matching the schema in §5.5. On error returns `{}`.
 
 ---
 
 ### 8.4 `ai.analyse_damage.analyse_damage(...)` → str
 
-**Existing** `analyze_damage_with_gemini` — move to `ai/analyse_damage.py`, no logic changes.
+In `claim_engine.py` as `analyze_damage_with_gemini` (for v1.0 flow). Also available in `ai/analyse_damage.py` (for v2.0 package).
 
-Every response MUST end with:
-> *"การประเมินนี้เป็นเพียงการประเมินเบื้องต้นโดย AI / This is a preliminary AI assessment. Please confirm with your insurance company."*
+- Requires `policy_info["policy_document_base64"]` — returns error message if missing.
+- Uploads PDF via `genai.upload_file` inside `try/finally` that always deletes.
+- System prompt injects `has_counterpart` and `additional_info`.
+- Response includes eligibility verdict + 3-step action plan.
 
-Eligibility logic (embed in prompt):
+Eligibility logic embedded in prompt:
 
 | Insurance Class | ไม่มีคู่กรณี | มีคู่กรณี |
 |:---:|:---:|:---:|
@@ -673,8 +672,6 @@ Eligibility logic (embed in prompt):
 ---
 
 ### 8.5 Gemini File Upload Pattern
-
-Used only in `analyse_damage`. Always clean up in `finally`:
 
 ```python
 uploaded = None
@@ -704,7 +701,12 @@ Append one JSON line per call to `/data/token_records/YYYY-MM.jsonl`:
 {"ts":"2026-02-26T12:05:30","operation":"categorise_document","model":"gemini-2.5-flash","input_tokens":512,"output_tokens":32,"total_tokens":544,"cost_usd":0.0012}
 ```
 
-Define token pricing constants in a `constants.py` file so they can be updated without code changes.
+Pricing constants in `constants.py`:
+
+```python
+PRICE_INPUT_PER_1K:  float = float(os.getenv("GEMINI_PRICE_INPUT",  "0.00035"))
+PRICE_OUTPUT_PER_1K: float = float(os.getenv("GEMINI_PRICE_OUTPUT", "0.00105"))
+```
 
 ---
 
@@ -721,8 +723,8 @@ def create_claim(claim_id, claim_type, line_user_id, has_counterpart) -> None:
 def get_claim_status(claim_id) -> Dict:
     """Read and return status.yaml as dict."""
 
-def update_claim_status(claim_id, status, memo=None, paid_amount=None) -> None:
-    """Update status (and optionally memo/paid_amount) in status.yaml."""
+def update_claim_status(claim_id, status, memo=None, paid_amount=None, submitted_at=None) -> None:
+    """Update status (and optionally memo/paid_amount/submitted_at) in status.yaml."""
 
 def mark_document_useful(claim_id, filename, useful: bool) -> None:
     """Set useful flag on one document in status.yaml."""
@@ -739,6 +741,9 @@ def get_extracted_data(claim_id) -> Dict:
 
 def list_all_claims(status_filter=None, type_filter=None) -> List[Dict]:
     """Scan all claim folders. Return list of status.yaml contents."""
+
+def save_summary(claim_id, text: str) -> None:
+    """Write AI-generated summary.md to the claim folder."""
 ```
 
 ### 9.2 `storage.document_store` — Public API
@@ -760,10 +765,10 @@ def get_document_path(claim_id, filename) -> str:
 ```python
 def next_claim_id(claim_type: str) -> str:
     """Atomically increment counter for claim_type in sequence.json.
-    Returns formatted Claim ID, e.g. "CD-20260226-000013"."""
+    Returns formatted Claim ID, e.g. 'CD-20260226-000013'."""
 ```
 
-Thread-safe: use `threading.Lock()` + `fcntl.flock` (see §10 for implementation).
+Thread-safe: uses `threading.Lock()` + `fcntl.flock(LOCK_EX)`.
 
 ---
 
@@ -774,21 +779,17 @@ Format: `{type}-{YYYYMMDD}-{counter:06d}`
 - `YYYYMMDD` = date the claim is **created** (not reformatted later)
 - Counter is global (not per-day): CD goes `000001, 000002, ...` regardless of date
 - CD and H have independent counters
+- `sequence.json` seeded by `entrypoint.sh` on first run
 
 ```python
+# storage/sequence.py (simplified)
 import fcntl, json, threading, datetime, pathlib, os
 
 DATA_DIR = os.getenv("DATA_DIR", "/data")
 SEQUENCE_PATH = pathlib.Path(DATA_DIR) / "sequence.json"
 _lock = threading.Lock()
 
-def _ensure_sequence_file():
-    if not SEQUENCE_PATH.exists():
-        SEQUENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        SEQUENCE_PATH.write_text(json.dumps({"CD": 0, "H": 0}))
-
 def next_claim_id(claim_type: str) -> str:
-    _ensure_sequence_file()
     with _lock:
         with open(SEQUENCE_PATH, "r+") as f:
             fcntl.flock(f, fcntl.LOCK_EX)
@@ -803,7 +804,7 @@ def next_claim_id(claim_type: str) -> str:
 
 ## 11. Web Dashboards
 
-All dashboards served by the same FastAPI app using **Jinja2** templates.
+All dashboards are **built** (`dashboards/reviewer.html`, `manager.html`, `admin.html`). Dashboard routes must be registered in `main.py` using **Jinja2** templates.
 
 ### 11.1 Reviewer Dashboard (`GET /reviewer`)
 
@@ -837,7 +838,7 @@ HTTP actions:
 | Total Paid (H) | Same for H |
 | Daily chart | Group `created_at[:10]` by date; split by type |
 
-Filters: date range + claim type → query params → re-query `list_all_claims`.
+Filters: date range + claim type → query params → `list_all_claims`.
 
 ---
 
@@ -845,7 +846,7 @@ Filters: date range + claim type → query params → re-query `list_all_claims`
 
 | Section | Detail |
 |---|---|
-| Log viewer | Read `/data/logs/app.log`; filter by level/date; max 2000 entries in memory |
+| Log viewer | Read `/data/logs/app.log`; filter by level/date; max `LOG_MAX_MEMORY` (2000) entries |
 | Log verbosity | `POST /admin/loglevel {level}` → `logging.getLogger().setLevel(level)` at runtime |
 | AI token usage | Read `/data/token_records/YYYY-MM.jsonl`; group by operation; show total cost |
 
@@ -855,9 +856,10 @@ Filters: date range + claim type → query params → re-query `list_all_claims`
 
 | Method | Path | Handler | Description |
 |---|---|---|---|
-| `GET` | `/` | root | Version info |
-| `POST` | `/webhook` | webhook | LINE events; verify HMAC-SHA256 |
-| `GET` | `/health` | health_check | Line + Gemini config status |
+| `GET` | `/` | root | Version info (returns `{"status":"running","version":"2.0.0"}`) |
+| `POST` | `/webhook` | webhook | LINE events; delegates to `_handle_webhook` |
+| `POST` | `/callback` | callback | Alias of `/webhook` (both paths handled) |
+| `GET` | `/health` | health_check | LINE + Gemini config status |
 | `GET` | `/reviewer` | reviewer_dashboard | HTML dashboard |
 | `GET` | `/reviewer/document` | reviewer_document | Serve raw image bytes |
 | `POST` | `/reviewer/useful` | reviewer_useful | Mark document useful flag |
@@ -868,49 +870,55 @@ Filters: date range + claim type → query params → re-query `list_all_claims`
 | `POST` | `/admin/loglevel` | admin_loglevel | Change log level at runtime |
 | `GET` | `/admin/tokens` | admin_tokens | AI token usage JSON |
 
+> ⚠️ Dashboard endpoints listed above are defined in the HTML files and spec. They must be registered as FastAPI routes in `main.py`.
+
+### Webhook Security
+
+The `_handle_webhook` helper in `main.py` enforces:
+- Empty body → `400 Bad Request`
+- Invalid HMAC-SHA256 signature → `400 Bad Request`
+- Malformed JSON / missing `events` key / non-UTF-8 → `400 Bad Request` (not 500)
+
 ---
 
 ## 13. LINE Flex Message Components
 
 All functions in `flex_messages.py`. Return `FlexContainer` via `FlexContainer.from_dict(...)`.
 
-### Existing (review for bilingual update)
+### Existing (v1.0 — in use)
 
-| Function | Trigger | Update |
+| Function | Trigger state |
+|---|---|
+| `create_request_info_flex()` | Session start ("เช็คสิทธิ์เคลมด่วน") |
+| `create_vehicle_selection_flex(policies)` | `waiting_for_vehicle_selection` — ⚠️ defined twice (L129 + L775); second definition wins |
+| `create_policy_info_flex(policy_info)` | Policy found (CD) |
+| `create_analysis_result_flex(...)` | Damage analysis done |
+| `create_additional_info_prompt_flex()` | After damage photo received |
+| `create_next_steps_flex()` | After analysis: "ส่งเคลม / จบการสนทนา" |
+| `create_claim_submission_instructions_flex()` | When user chose "ส่งเคลม" |
+
+### v2.0 New (built for `handlers/` package)
+
+| Function | Trigger state | Status |
 |---|---|---|
-| `create_request_info_flex()` | Session start (current v1 pattern; replaced by claim-type flow in v2) | Consider deprecating |
-| `create_vehicle_selection_flex(policies)` | Multiple policies found | Add EN subtitle |
-| `create_policy_info_flex(policy_info)` | CD policy found | Add `coverage_amount`, `deductible` fields |
-| `create_analysis_result_flex(...)` | Damage analysis done | Add disclaimer line |
-| `create_additional_info_prompt_flex()` | After counterpart question | Repurpose as optional incident description step |
-
-### New (must build)
-
-| Function | Trigger | Content |
-|---|---|---|
-| `create_claim_type_selector_flex()` | Ambiguous trigger or "เช็คสิทธิ์" | QuickReply: "🚗 ประกันรถ / Car" · "🏥 ประกันสุขภาพ / Health" |
-| `create_claim_confirmed_flex(claim_id, claim_type)` | Claim type confirmed | Shows Claim ID + type in both languages |
-| `create_document_checklist_flex(claim_type, has_counterpart, uploaded_docs)` | After counterpart answer (CD) or policy shown (H) | Required docs list with ✅/⏳ per item; updates every upload |
-| `create_doc_received_flex(category, extracted_fields, still_missing)` | After each successful upload | Confirms category, extracted key fields (table), remaining docs |
-| `create_ownership_question_flex(extracted_name)` | Driving license uploaded (CD with-counterpart) | Name from extraction + QuickReply: "ของฉัน (ฝ่ายเรา)" · "คู่กรณี (อีกฝ่าย)" |
-| `create_submit_prompt_flex(claim_id, doc_count)` | All docs complete | Summary card + "ส่งคำร้อง / Submit Claim" button |
-| `create_submission_confirmed_flex(claim_id)` | Successful submission | Claim ID in large text; instructions to save it |
-| `create_health_policy_info_flex(policy_info)` | Health policy found | Plan name, IPD/OPD coverage, room per night |
+| `create_document_checklist_flex(claim_type, has_counterpart, uploaded_docs)` | After counterpart answer | ✅ Required by `handlers/documents.py` |
+| `create_doc_received_flex(category, fields, still_missing)` | After each upload | ✅ Required by `handlers/documents.py` |
+| `create_ownership_question_flex(extracted_name)` | `awaiting_ownership` | ✅ Required by `handlers/documents.py` |
+| `create_submit_prompt_flex(claim_id, doc_count)` | `ready_to_submit` | ✅ Required by `handlers/documents.py` |
+| `create_submission_confirmed_flex(claim_id)` | After `submitted` | ✅ Required by `handlers/submit.py` |
+| `create_claim_type_selector_flex()` | Ambiguous trigger | ❌ Not yet built |
+| `create_claim_confirmed_flex(claim_id, claim_type)` | Claim type confirmed | ❌ Not yet built |
+| `create_health_policy_info_flex(policy_info)` | Health policy found | ❌ Not yet built |
 
 ### Bilingual Rule (FR-12.1)
 
-Every message to the customer — both inline `TextMessage` strings and all Flex Message text fields — **must contain Thai followed by English**. Suggested pattern:
-
-```
-Primary text (Thai)
-Sub-text or parenthetical (English)
-```
+Every message to the customer — both `TextMessage` strings and Flex Message text fields — **must contain Thai followed by English**. Pattern: Thai primary text, English sub-text or parenthetical.
 
 ---
 
 ## 14. Docker & Deployment
 
-### Updated `docker-compose.yml`
+### `docker-compose.yml` (current)
 
 ```yaml
 services:
@@ -921,9 +929,14 @@ services:
     expose:
       - "8000"
     volumes:
-      - claim-data:/data         # REQUIRED for v2
+      - claim-data:/data
     environment:
       - DATA_DIR=/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: always
 
   ngrok:
@@ -934,13 +947,15 @@ services:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
     ports:
       - "4040:4040"
-    depends_on: [line-bot]
+    depends_on:
+      line-bot:
+        condition: service_healthy
     restart: always
 
   mock-chat:
     build: .
     container_name: mock-chat
-    command: python mock_chat.py
+    command: python mock_chat.py          # ❌ mock_chat.py does not exist yet
     env_file: .env
     environment:
       - LINE_API_HOST=http://mock-chat:8001
@@ -957,29 +972,39 @@ volumes:
     driver: local
 ```
 
-### `requirements.txt` Additions
+### `entrypoint.sh`
 
+Handles on-container-start:
+1. Optional `git pull` (if `REPO_URL` and `BRANCH` set)
+2. Creates all `/data` subdirs (`claims/`, `logs/`, `token_records/`)
+3. Seeds `sequence.json` on first run (`{"CD": 0, "H": 0}`)
+4. `exec python /app/main.py`
+
+### Running Tests
+
+```bash
+# Install test deps
+pip install -r requirements_test.txt
+
+# Run full suite (338 tests)
+pytest tests/ -v
+
+# Run by marker
+pytest tests/ -m unit
+pytest tests/ -m "flow_cd"
+pytest tests/ -m security
 ```
-pyyaml
-jinja2
-```
 
-### Application Startup Checks
+Test markers (defined in `pytest.ini`):
 
-Add to `main.py` before `uvicorn.run(...)`:
-
-```python
-import pathlib, json
-
-def _init_data_dir():
-    data = pathlib.Path(os.getenv("DATA_DIR", "/data"))
-    (data / "claims").mkdir(parents=True, exist_ok=True)
-    (data / "logs").mkdir(parents=True, exist_ok=True)
-    (data / "token_records").mkdir(parents=True, exist_ok=True)
-    seq = data / "sequence.json"
-    if not seq.exists():
-        seq.write_text(json.dumps({"CD": 0, "H": 0}))
-```
+| Marker | Description |
+|---|---|
+| `unit` | Pure unit tests (no I/O, no network) |
+| `integration` | End-to-end through the FastAPI layer |
+| `security` | Webhook security and signature verification |
+| `slow` | Tests that may take > 2 s |
+| `flow_cd` | Car Damage conversation flow |
+| `flow_health` | Health conversation flow |
 
 ---
 
@@ -989,10 +1014,10 @@ def _init_data_dir():
 
 | Operation | Target | Note |
 |---|---|---|
-| Text reply | < 3 s | Immediate `reply_message`; push result async |
+| Text reply | < 3 s | Immediate `reply_message`; push AI result async |
 | AI OCR (identity photo) | < 10 s | Single Gemini vision call |
 | Document categorisation | < 5 s | Simple class-detection prompt |
-| Data extraction per doc | < 10 s | Structured JSON prompt; varies by doc complexity |
+| Data extraction per doc | < 10 s | Structured JSON prompt |
 | Damage analysis + verdict | < 30 s | Multi-modal: image + PDF |
 | Dashboard page load | < 2 s | Static HTML + JSON; no AI calls |
 
@@ -1000,53 +1025,69 @@ def _init_data_dir():
 
 | Requirement | Implementation |
 |---|---|
-| Webhook auth | `WebhookHandler` HMAC-SHA256 (existing) |
-| API keys | `.env` only — never in source code or logs |
-| PII in logs | Log only Claim IDs, doc categories, and error codes — **never** name, CID, or phone |
-| AI file cleanup | `finally` block deletes Gemini uploaded files after every call (existing pattern) |
+| Webhook auth | `WebhookHandler` HMAC-SHA256; enforced in `_handle_webhook` |
+| API keys | `.env` only — never in source code or logs; validated at startup in `config.py` |
+| PII in logs | Log only: Claim IDs, doc categories, state names, error codes — **never** name, CID, or phone |
+| AI file cleanup | `finally` block deletes Gemini uploaded files after every call |
 | Dashboard auth | **Not in PoC**; required before production (JWT or session cookie) |
 
 ### Logging
 
-- Replace all `print()` calls with `logging.getLogger(__name__)`.
-- Write to `/data/logs/app.log` with `RotatingFileHandler` (7-day / 2000 entries max).
-- Every log entry includes: `timestamp | level | claim_id (if known) | operation | message`.
+- All modules use `logger = logging.getLogger(__name__)` — no `print()` calls.
+- Configuration: `RotatingFileHandler` writing to `/data/logs/app.log`.
+- Constants in `constants.py`:
+  - `LOG_MAX_BYTES = 10 MB`
+  - `LOG_BACKUP_COUNT = 7` (→ ~70 MB max)
+  - `LOG_MAX_MEMORY = 2000` (max log entries in Admin dashboard memory)
+- Every log entry must include: `timestamp | level | claim_id (if known) | operation | message`.
+
+### Architecture Rules (Must Not Be Violated)
+
+| Rule | Detail |
+|---|---|
+| **State is the only router** | First branch in any handler must always be on `session["state"]` |
+| **All file I/O via `storage/`** | No code outside the `storage/` package reads or writes files in `/data` |
+| **All AI calls via `ai/`** | No code outside the `ai/` package calls `genai.*` (exception: `claim_engine.py` for v1.0 flow, until replaced) |
+| **Reply token used exactly once** | `reply_message()` must be called exactly once per webhook event |
+| **Gemini files always deleted** | Every `genai.upload_file()` inside `try/finally` that calls `genai.delete_file()` |
+| **No PII in logs** | Never log names, ID card numbers, phone numbers, or policy numbers |
 
 ---
 
-## 16. Migration Notes — v1 → v2
+## 16. Remaining Migration Steps
 
-Implement in this order to maintain a working bot at each step:
+The following steps are **still required** to complete the v2.0 migration. Each step must leave the bot in a working state.
 
-| Step | Change | Risk if skipped |
+| Step | Change | Status |
 |---|---|---|
-| **1** | Add `pyyaml`, `jinja2` to `requirements.txt`; add volume to docker-compose; add `DATA_DIR` env var | Steps 2+ cannot run |
-| **2** | Create `storage/` package; implement `sequence.py` and `claim_store.py` | No claim IDs or persistence |
-| **3** | Show Claim ID in existing policy-found flow (CD only); call `create_claim` on policy match | No Claim ID in early messages |
-| **4** | Add `ai/categorise.py` + `ai/extract.py`; replace single-purpose image handler with multi-doc pipeline | Only damage photos work |
-| **5** | Add `"ready_to_submit"` state + `create_submit_prompt_flex` + submit handler | No submission flow |
-| **6** | Add Health (H) claim type; update `mock_data.py`; add `create_health_policy_info_flex` | Health claims unsupported |
-| **7** | Build Reviewer, Manager, Admin dashboards | No internal visibility |
-| **8** | Bilingual update — all Flex Messages and TextMessage strings | FR-12.1 not met |
-| **9** | Token tracking (append to `/data/token_records/`) | Admin AI cost view unavailable |
-| **10** | Replace `print()` with `logging`; write to `/data/logs/` | Admin log view unavailable |
+| **A** | Create `mock_chat.py` | ❌ Blocker for `--profile dev` |
+| **B** | Register dashboard routes in `main.py` (Jinja2 + all 12 endpoints) | ❌ Not done |
+| **C** | Wire `handlers/trigger.py` + `handlers/identity.py` into `main.py` (replace v1.0 detect/verify states) | ❌ Not done |
+| **D** | Wire `handlers/documents.py` into `handle_image_message` + `handle_text_message` (uploading/ownership states) | ❌ Not done |
+| **E** | Wire `handlers/submit.py` into `handle_text_message` (`ready_to_submit` state) | ❌ Not done |
+| **F** | Add Health (H) claim type support in `main.py`; add H policy records to `mock_data.py` | ❌ Not done |
+| **G** | Fix `create_vehicle_selection_flex` duplicate in `flex_messages.py` (L129 vs L775) | ❌ Bug to fix |
+| **H** | Build missing Flex components: `create_claim_type_selector_flex`, `create_claim_confirmed_flex`, `create_health_policy_info_flex` | ❌ Not done |
+| **I** | Bilingual update — all TextMessage strings and Flex text fields | ❌ Not done |
+| **J** | Wire token tracking into `main.py`/`claim_engine.py` (currently only in `ai/` package) | ❌ Not done |
+
+> **Note on Steps C–E:** The v2.0 handler package (`handlers/trigger.py`, `handlers/identity.py`, `handlers/documents.py`, `handlers/submit.py`) is **fully implemented and tested**. The only remaining work is wiring them into `main.py` by replacing the v1.0 state branches.
 
 ---
 
 ## 17. Open Questions
 
-The following decisions need input before implementation begins. Defaults shown are what the developer should assume if no answer is received within 2 working days.
-
 | # | Question | Options | Default assumption |
 |---|---|---|---|
 | OQ-1 | Where do Health policy records come from? | (a) Add to `mock_data.py`, (b) Separate `health_policies.json` | Add to `mock_data.py` |
-| OQ-2 | If Gemini miscategorises a document, does the user get to correct it? | (a) Accept AI verdict only, (b) Show category + "Correct?" QuickReply | Accept AI verdict |
+| OQ-2 | If Gemini miscategorises a document, does the user get to correct it? | (a) Accept AI verdict, (b) Show category + "Correct?" QuickReply | Accept AI verdict |
 | OQ-3 | Dashboard authentication method? | JWT, Basic Auth, LINE Login for Business | No auth for PoC |
-| OQ-4 | Maximum damage photos per claim? | 1 / 3 / unlimited | Unlimited |
-| OQ-5 | AI-generated `summary.md` — on submission or on Reviewer open? | On submission / On open | On submission |
+| OQ-4 | Maximum damage photos per claim? | 1 / 3 / unlimited | Unlimited (numbered `vehicle_damage_photo_1`, `_2`, ...) |
+| OQ-5 | AI-generated `summary.md` — on submission or on Reviewer open? | On submission / On open | On submission (implemented in `handlers/submit.py`) |
 | OQ-6 | GPS extraction — hard requirement or best-effort? | Hard / Best-effort (null if absent) | Best-effort |
-| OQ-7 | Gemini token pricing constants — who provides values? | DevOps / Product Owner | Developer to set from current GA pricing page |
+| OQ-7 | Gemini token pricing constants — who provides values? | DevOps / Product Owner | Developer sets from current GA pricing page; overridable via env vars |
 
 ---
 
-*Source documents: [business-requirement.md](business-requirement.md) · [user-journey.md](user-journey.md) · [document-verify.md](document-verify.md)*
+*Source documents: [business-requirement.md](business-requirement.md) · [user-journey.md](user-journey.md) · [document-verify.md](document-verify.md)*  
+*Tech spec last updated: February 26, 2026 by Technical Lead (AI)*
