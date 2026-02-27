@@ -133,7 +133,7 @@ def create_vehicle_selection_flex(policies: list) -> FlexContainer:
     bubbles = []
     
     for i, policy in enumerate(policies):
-        full_name = f"{policy['first_name'].strip()} {policy['last_name']}"
+        full_name = (f"{policy.get('first_name', '').strip()} {policy.get('last_name', '')}").strip() or "-"
         bubble = {
             "type": "bubble",
             "hero": {
@@ -270,7 +270,7 @@ def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
         FlexContainer: Flex Message พร้อมส่งผ่าน LINE API
     """
     # รวมชื่อ-นามสกุล (ไม่รวมคำนำหน้า)
-    full_name = f"{policy_info['first_name'].strip()} {policy_info['last_name']}"
+    full_name = (f"{policy_info.get('first_name', '').strip()} {policy_info.get('last_name', '')}").strip() or "-"
 
     flex_message = {
         "type": "bubble",
@@ -352,7 +352,7 @@ def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
                         },
                         {
                             "type": "text",
-                            "text": policy_info["plate"],
+                            "text": policy_info.get("plate", "-"),
                             "size": "sm",
                             "color": "#333333",
                             "margin": "sm"
@@ -373,7 +373,7 @@ def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
                         },
                         {
                             "type": "text",
-                            "text": f"{policy_info['car_model']} ({policy_info['car_year']})",
+                            "text": f"{policy_info.get('car_model', '-')} ({policy_info.get('car_year', '-')})",
                             "size": "sm",
                             "color": "#333333",
                             "wrap": True,
@@ -395,7 +395,7 @@ def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
                         },
                         {
                             "type": "text",
-                            "text": policy_info["insurance_type"],
+                            "text": policy_info.get("insurance_type", "-"),
                             "size": "sm",
                             "color": "#0066FF",
                             "weight": "bold",
@@ -780,7 +780,7 @@ def create_vehicle_selection_flex(policies: list) -> FlexContainer:
 
     for i, policy in enumerate(policies):
         # เอาทะเบียนขึ้นก่อนตามความต้องการ
-        car_label = f"{policy['plate']} - {policy['car_model']}"
+        car_label = f"{policy.get('plate', '-')} - {policy.get('car_model', '-')}"
         # ตัดข้อความให้ไม่เกิน 40 ตัวอักษร
         if len(car_label) > 40:
             car_label = car_label[:37] + "..."
@@ -1102,5 +1102,373 @@ def create_claim_submission_instructions_flex() -> FlexContainer:
             ],
             "paddingAll": "10px"
         }
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
+# ── Phase-2 additions (v2.0 handlers) ─────────────────────────────────────────
+
+def create_claim_confirmed_flex(claim_id: str, claim_type: str) -> FlexContainer:
+    """Confirmation bubble shown after a new claim is created."""
+    type_label = "ประกันรถยนต์ / Car" if claim_type == "CD" else "สุขภาพ / Health"
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "✅ สร้างเลขเคลมสำเร็จ",
+                    "weight": "bold",
+                    "size": "lg",
+                    "color": "#FFFFFF",
+                }
+            ],
+            "backgroundColor": "#00B900",
+            "paddingAll": "16px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "baseline",
+                    "contents": [
+                        {"type": "text", "text": "เลขเคลม:", "size": "sm", "color": "#999999", "flex": 4},
+                        {"type": "text", "text": claim_id, "size": "sm", "color": "#333333", "weight": "bold", "flex": 6},
+                    ],
+                    "margin": "md",
+                },
+                {
+                    "type": "box",
+                    "layout": "baseline",
+                    "contents": [
+                        {"type": "text", "text": "ประเภท:", "size": "sm", "color": "#999999", "flex": 4},
+                        {"type": "text", "text": type_label, "size": "sm", "color": "#333333", "flex": 6},
+                    ],
+                    "margin": "md",
+                },
+            ],
+            "paddingAll": "20px",
+        },
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
+def create_claim_type_selector_flex() -> FlexContainer:
+    """Quick-reply selector asking the user to choose CD or Health claim type."""
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "❓ กรุณาเลือกประเภทการเคลม",
+                    "weight": "bold",
+                    "size": "md",
+                    "color": "#FFFFFF",
+                }
+            ],
+            "backgroundColor": "#0066FF",
+            "paddingAll": "16px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "Please select claim type:", "size": "sm", "color": "#666666"},
+            ],
+            "paddingAll": "20px",
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "🚗 ประกันรถยนต์ (CD)", "text": "CD"},
+                    "style": "primary",
+                    "color": "#0066FF",
+                    "height": "sm",
+                },
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "🏥 สุขภาพ (H)", "text": "H"},
+                    "style": "secondary",
+                    "margin": "sm",
+                    "height": "sm",
+                },
+            ],
+            "paddingAll": "15px",
+        },
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
+def create_health_policy_info_flex(policy_info: Dict) -> FlexContainer:
+    """Policy card for a Health (H) claim."""
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "✅ พบข้อมูลกรมธรรม์สุขภาพ",
+                    "weight": "bold",
+                    "size": "lg",
+                    "color": "#FFFFFF",
+                }
+            ],
+            "backgroundColor": "#00B900",
+            "paddingAll": "16px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "baseline",
+                    "contents": [
+                        {"type": "text", "text": "เลขกรมธรรม์:", "size": "sm", "color": "#999999", "flex": 5},
+                        {"type": "text", "text": policy_info.get("policy_number", "-"), "size": "sm", "color": "#333333", "weight": "bold", "flex": 7},
+                    ],
+                    "margin": "md",
+                },
+                {
+                    "type": "box",
+                    "layout": "baseline",
+                    "contents": [
+                        {"type": "text", "text": "แผน:", "size": "sm", "color": "#999999", "flex": 5},
+                        {"type": "text", "text": policy_info.get("plan", "-"), "size": "sm", "color": "#0066FF", "weight": "bold", "flex": 7},
+                    ],
+                    "margin": "md",
+                },
+            ],
+            "paddingAll": "20px",
+        },
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
+def create_document_checklist_flex(
+    claim_type: str,
+    has_counterpart,
+    uploaded_docs: Dict,
+) -> FlexContainer:
+    """Document upload checklist showing required vs uploaded docs."""
+    from constants import REQUIRED_DOCS
+    reqs = REQUIRED_DOCS.get(claim_type, {})
+    if claim_type == "CD":
+        required_keys = reqs.get(has_counterpart, reqs.get("ไม่มีคู่กรณี", []))
+    else:
+        required_keys = reqs.get(None, [])
+
+    label_map = {
+        "driving_license_customer": "ใบขับขี่ (ของคุณ)",
+        "driving_license_other_party": "ใบขับขี่ (คู่กรณี)",
+        "vehicle_registration": "สมุดทะเบียนรถ",
+        "vehicle_damage_photo": "รูปความเสียหาย",
+        "citizen_id_card": "บัตรประชาชน",
+        "medical_certificate": "ใบรับรองแพทย์",
+        "itemised_bill": "ใบแจงค่าใช้จ่าย",
+        "receipt": "ใบเสร็จรับเงิน",
+    }
+
+    rows = []
+    for key in required_keys:
+        done = key in uploaded_docs or any(u.startswith(key) for u in uploaded_docs)
+        icon = "✅" if done else "⬜"
+        rows.append({
+            "type": "text",
+            "text": f"{icon} {label_map.get(key, key)}",
+            "size": "sm",
+            "color": "#333333" if done else "#666666",
+            "margin": "sm",
+        })
+
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "📋 รายการเอกสาร / Document Checklist", "weight": "bold", "size": "md", "color": "#FFFFFF"}
+            ],
+            "backgroundColor": "#0066FF",
+            "paddingAll": "16px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": rows or [{"type": "text", "text": "ไม่มีเอกสารที่ต้องการ", "size": "sm", "color": "#999999"}],
+            "paddingAll": "20px",
+        },
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
+def create_doc_received_flex(category: str, fields: Dict, missing: list) -> FlexContainer:
+    """Confirmation bubble shown after a document image is accepted."""
+    label_map = {
+        "driving_license_customer": "ใบขับขี่ (ของคุณ)",
+        "driving_license_other_party": "ใบขับขี่ (คู่กรณี)",
+        "vehicle_registration": "สมุดทะเบียนรถ",
+        "vehicle_damage_photo": "รูปความเสียหาย",
+        "citizen_id_card": "บัตรประชาชน",
+        "medical_certificate": "ใบรับรองแพทย์",
+        "itemised_bill": "ใบแจงค่าใช้จ่าย",
+        "receipt": "ใบเสร็จรับเงิน",
+        "driving_license": "ใบขับขี่",
+    }
+    cat_label = label_map.get(category, category)
+    remaining = len(missing)
+    remaining_text = f"ยังขาดอีก {remaining} รายการ" if remaining else "ครบถ้วนแล้ว! 🎉"
+
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": f"📄 รับเอกสาร: {cat_label}", "weight": "bold", "size": "sm", "color": "#FFFFFF"}
+            ],
+            "backgroundColor": "#00B900",
+            "paddingAll": "14px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": remaining_text, "size": "sm", "color": "#333333", "margin": "none"},
+            ],
+            "paddingAll": "18px",
+        },
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
+def create_submit_prompt_flex(claim_id: str, doc_count: int) -> FlexContainer:
+    """Prompt bubble shown when all required documents are uploaded."""
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "🎉 เอกสารครบแล้ว!", "weight": "bold", "size": "lg", "color": "#FFFFFF"}
+            ],
+            "backgroundColor": "#00B900",
+            "paddingAll": "16px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": f"อัปโหลดเอกสารแล้ว {doc_count} รายการ", "size": "sm", "color": "#333333"},
+                {"type": "text", "text": f"เลขเคลม: {claim_id}", "size": "sm", "color": "#666666", "margin": "sm"},
+            ],
+            "paddingAll": "20px",
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "📤 ส่งเคลม / Submit Claim", "text": "ส่งเคลม"},
+                    "style": "primary",
+                    "color": "#00B900",
+                    "height": "sm",
+                }
+            ],
+            "paddingAll": "15px",
+        },
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
+def create_ownership_question_flex(name: str) -> FlexContainer:
+    """Ask which party owns a driving license that was just uploaded."""
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "🪪 ใบขับขี่นี้เป็นของใคร?", "weight": "bold", "size": "md", "color": "#FFFFFF"}
+            ],
+            "backgroundColor": "#FF8C00",
+            "paddingAll": "16px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": f"ชื่อในใบขับขี่: {name}", "size": "sm", "color": "#333333"},
+            ],
+            "paddingAll": "20px",
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "ของฉัน (ฝ่ายเรา)", "text": "ของฉัน (ฝ่ายเรา)"},
+                    "style": "primary",
+                    "color": "#0066FF",
+                    "height": "sm",
+                },
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "คู่กรณี (อีกฝ่าย)", "text": "คู่กรณี (อีกฝ่าย)"},
+                    "style": "secondary",
+                    "margin": "sm",
+                    "height": "sm",
+                },
+            ],
+            "paddingAll": "15px",
+        },
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
+def create_submission_confirmed_flex(claim_id: str) -> FlexContainer:
+    """Final confirmation bubble after a claim is successfully submitted."""
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "✅ ส่งเคลมสำเร็จ!", "weight": "bold", "size": "xl", "color": "#FFFFFF"}
+            ],
+            "backgroundColor": "#00B900",
+            "paddingAll": "20px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "เราได้รับคำร้องของคุณแล้ว ทีมงานจะติดต่อกลับโดยเร็ว", "size": "sm", "color": "#333333", "wrap": True},
+                {
+                    "type": "box",
+                    "layout": "baseline",
+                    "contents": [
+                        {"type": "text", "text": "เลขเคลม:", "size": "sm", "color": "#999999", "flex": 4},
+                        {"type": "text", "text": claim_id, "size": "sm", "color": "#0066FF", "weight": "bold", "flex": 8},
+                    ],
+                    "margin": "lg",
+                },
+            ],
+            "paddingAll": "20px",
+        },
     }
     return FlexContainer.from_dict(flex_message)

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reviewer Dashboard — LINE Insurance Claims Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #f0f4f8; color: #2d3748; }
+    header { background: #2b6cb0; color: white; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; }
+    header h1 { margin: 0; font-size: 1.3rem; }
+    nav a { color: rgba(255,255,255,0.8); text-decoration: none; margin-left: 1.5rem; font-size: 0.9rem; }
+    nav a:hover { color: white; }
+    .container { max-width: 1200px; margin: 2rem auto; padding: 0 1.5rem; }
+    .filters { background: white; border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 1.5rem;
+                display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
+    .filter-group label { font-size: 0.75rem; color: #718096; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    select, input { border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.9rem; }
+    button { background: #2b6cb0; color: white; border: none; border-radius: 6px; padding: 0.45rem 1.2rem;
+              cursor: pointer; font-size: 0.9rem; }
+    button:hover { background: #2c5282; }
+    .table-wrap { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    thead { background: #2b6cb0; color: white; }
+    thead th { padding: 0.75rem 1rem; text-align: left; font-weight: 600; }
+    tbody tr:hover { background: #edf2f7; }
+    tbody td { padding: 0.7rem 1rem; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+    .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .badge-CD { background: #bee3f8; color: #2b6cb0; }
+    .badge-H  { background: #c6f6d5; color: #276749; }
+    .status-badge { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .st-Submitted   { background: #fefcbf; color: #744210; }
+    .st-Under-Review { background: #bee3f8; color: #2c5282; }
+    .st-Approved    { background: #c6f6d5; color: #22543d; }
+    .st-Rejected    { background: #fed7d7; color: #742a2a; }
+    .st-Pending     { background: #e9d8fd; color: #44337a; }
+    .st-Paid        { background: #b2f5ea; color: #234e52; }
+    .detail-row { background: #f7fafc; display: none; }
+    .detail-row td { padding: 1rem 1.5rem; }
+    .doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem; margin-top: 0.75rem; }
+    .doc-card { border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+    .doc-thumb { width: 100%; height: 100px; object-fit: cover; display: block; cursor: pointer; }
+    .doc-info { padding: 0.4rem 0.5rem; font-size: 0.75rem; background: #f7fafc; }
+    .doc-info span { display: block; color: #718096; }
+    .useful-btn { font-size: 0.7rem; padding: 0.2rem 0.5rem; cursor: pointer;
+                  border: 1px solid #e2e8f0; border-radius: 4px; background: white; }
+    .useful-btn.active { background: #c6f6d5; border-color: #68d391; }
+    .transition-form { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.75rem; }
+    .transition-form select { min-width: 160px; }
+    .transition-form input[type=text] { flex: 1; min-width: 200px; }
+    .transition-form input[type=number] { width: 120px; }
+    .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+             z-index: 1000; justify-content: center; align-items: center; }
+    .modal.open { display: flex; }
+    .modal-img { max-width: 92vw; max-height: 90vh; border-radius: 8px; }
+    .modal-close { position: absolute; top: 1rem; right: 1.5rem; color: white;
+                   font-size: 2rem; cursor: pointer; background: none; border: none; }
+    .empty { padding: 3rem; text-align: center; color: #a0aec0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📋 Reviewer Dashboard</h1>
+  <nav>
+    <a href="/reviewer">Reviewer</a>
+    <a href="/manager">Manager</a>
+    <a href="/admin">Admin</a>
+    <a href="/health">Health</a>
+  </nav>
+</header>
+
+<div class="container">
+  <!-- Filters -->
+  <form class="filters" method="get" action="/reviewer">
+    <div class="filter-group">
+      <label>Status</label>
+      <select name="status">
+        <option value="">— All —</option>
+        {% for s in all_statuses %}
+        <option value="{{ s }}" {% if selected_status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Claim Type</label>
+      <select name="claim_type">
+        <option value="">— All —</option>
+        <option value="CD" {% if selected_type == 'CD' %}selected{% endif %}>CD – Car Damage</option>
+        <option value="H"  {% if selected_type == 'H'  %}selected{% endif %}>H – Health</option>
+      </select>
+    </div>
+    <button type="submit">Filter</button>
+    <a href="/reviewer"><button type="button">Reset</button></a>
+  </form>
+
+  <!-- Claims Table -->
+  <div class="table-wrap">
+    {% if claims %}
+    <table>
+      <thead>
+        <tr>
+          <th>Claim ID</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Submitted At</th>
+          <th>Docs</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in claims %}
+        <tr>
+          <td><code>{{ c.claim_id }}</code></td>
+          <td><span class="badge badge-{{ c.claim_type }}">{{ c.claim_type }}</span></td>
+          <td>
+            <span class="status-badge st-{{ c.status | replace(' ', '-') }}">{{ c.status }}</span>
+          </td>
+          <td>{{ c.updated_at or c.created_at or '—' }}</td>
+          <td>{{ c.documents | length if c.documents else 0 }}</td>
+          <td><button type="button" onclick="toggleDetail('{{ c.claim_id }}')">▾ Detail</button></td>
+        </tr>
+        <tr id="detail-{{ c.claim_id }}" class="detail-row">
+          <td colspan="6">
+            <!-- Documents -->
+            <strong>Documents</strong>
+            <div class="doc-grid">
+              {% if c.documents %}
+                {% for doc in c.documents %}
+                <div class="doc-card">
+                  <img class="doc-thumb"
+                       src="/reviewer/document?claim_id={{ c.claim_id }}&filename={{ doc.filename }}"
+                       alt="{{ doc.category }}"
+                       onclick="openModal('/reviewer/document?claim_id={{ c.claim_id }}&filename={{ doc.filename }}')">
+                  <div class="doc-info">
+                    <span><strong>{{ doc.category or doc.filename }}</strong></span>
+                    <span>{{ doc.filename }}</span>
+                    <button class="useful-btn {% if doc.useful %}active{% endif %}"
+                            id="useful-btn-{{ c.claim_id }}-{{ loop.index }}"
+                            onclick="toggleUseful('{{ c.claim_id }}', '{{ doc.filename }}', this)">
+                      {% if doc.useful %}✅ Useful{% else %}🔲 Mark useful{% endif %}
+                    </button>
+                  </div>
+                </div>
+                {% endfor %}
+              {% else %}
+                <p style="color:#a0aec0">No documents uploaded.</p>
+              {% endif %}
+            </div>
+
+            <!-- Status transition form -->
+            <strong style="display:block;margin-top:1rem;">Update Status</strong>
+            <div class="transition-form">
+              <label style="font-size:0.8rem">New status:</label>
+              <select id="new-status-{{ c.claim_id }}">
+                {% for target in valid_transitions.get(c.status, []) %}
+                <option value="{{ target }}">{{ target }}</option>
+                {% endfor %}
+              </select>
+              <input type="text" id="memo-{{ c.claim_id }}" placeholder="Memo / remark (optional)">
+              <input type="number" id="paid-{{ c.claim_id }}" placeholder="Paid amount (THB)" step="0.01">
+              <button onclick="updateStatus('{{ c.claim_id }}')">Update</button>
+              <span id="status-msg-{{ c.claim_id }}" style="font-size:0.8rem;color:#276749"></span>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No claims found for the selected filters.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Image Modal -->
+<div class="modal" id="imgModal">
+  <button class="modal-close" onclick="closeModal()">✕</button>
+  <img class="modal-img" id="modalImg" src="" alt="Document">
+</div>
+
+<script>
+  function toggleDetail(id) {
+    const row = document.getElementById('detail-' + id);
+    row.style.display = row.style.display === 'table-row' ? 'none' : 'table-row';
+  }
+  function openModal(src) {
+    document.getElementById('modalImg').src = src;
+    document.getElementById('imgModal').classList.add('open');
+  }
+  function closeModal() {
+    document.getElementById('imgModal').classList.remove('open');
+    document.getElementById('modalImg').src = '';
+  }
+  document.getElementById('imgModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+  function toggleUseful(claimId, filename, btn) {
+    const currentlyUseful = btn.classList.contains('active');
+    const useful = !currentlyUseful;
+    fetch('/reviewer/useful', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({claim_id: claimId, filename: filename, useful: useful})
+    }).then(r => r.json()).then(() => {
+      btn.classList.toggle('active', useful);
+      btn.textContent = useful ? '✅ Useful' : '🔲 Mark useful';
+    });
+  }
+  function updateStatus(claimId) {
+    const status = document.getElementById('new-status-' + claimId).value;
+    const memo   = document.getElementById('memo-' + claimId).value;
+    const paid   = document.getElementById('paid-' + claimId).value;
+    const msgEl  = document.getElementById('status-msg-' + claimId);
+    if (!status) { msgEl.textContent = '⚠️ Select a status'; return; }
+    fetch('/reviewer/status', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        claim_id: claimId,
+        status: status,
+        memo: memo,
+        paid_amount: paid ? parseFloat(paid) : null
+      })
+    }).then(r => r.json()).then(d => {
+      if (d.ok) {
+        msgEl.textContent = '✅ Updated to ' + d.new_status;
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        msgEl.textContent = '❌ ' + (d.detail || 'Error');
+      }
+    }).catch(() => { msgEl.textContent = '❌ Network error'; });
+  }
+</script>
+</body>
+</html>

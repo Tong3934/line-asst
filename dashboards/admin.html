@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard — LINE Insurance Claims Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #f0f4f8; color: #2d3748; }
+    header { background: #553c9a; color: white; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; }
+    header h1 { margin: 0; font-size: 1.3rem; }
+    nav a { color: rgba(255,255,255,0.8); text-decoration: none; margin-left: 1.5rem; font-size: 0.9rem; }
+    nav a:hover { color: white; }
+    .container { max-width: 1000px; margin: 2rem auto; padding: 0 1.5rem; }
+    .card { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;
+             box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .card h2 { margin: 0 0 1rem; font-size: 1rem; color: #2d3748; border-bottom: 2px solid #e9d8fd; padding-bottom: 0.5rem; }
+    .row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+    select, input[type=text], input[type=month] {
+      border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.4rem 0.75rem;
+      font-size: 0.9rem; background: white;
+    }
+    button { background: #553c9a; color: white; border: none; border-radius: 6px;
+              padding: 0.45rem 1.2rem; cursor: pointer; font-size: 0.9rem; }
+    button:hover { background: #44337a; }
+    .badge { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+    .health-ok  { background: #48bb78; }
+    .health-err { background: #f56565; }
+    .health-row { display: flex; align-items: center; padding: 0.4rem 0; font-size: 0.9rem; }
+    .health-row .key { flex: 1; color: #718096; }
+    table.token-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 0.75rem; }
+    table.token-table thead { background: #e9d8fd; }
+    table.token-table th, table.token-table td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #e2e8f0; }
+    .kpi-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 0.75rem; }
+    .kpi { text-align: center; padding: 0.8rem; background: #f9f5ff; border-radius: 6px; }
+    .kpi .v { font-size: 1.5rem; font-weight: 700; color: #553c9a; }
+    .kpi .l { font-size: 0.75rem; color: #718096; margin-top: 0.2rem; }
+    .msg { margin-top: 0.5rem; font-size: 0.85rem; }
+    .log-level-display { font-weight: 700; font-size: 1.1rem; color: #553c9a; margin-left: 0.5rem; }
+    code { font-size: 0.8rem; background: #f7fafc; padding: 0.1rem 0.3rem; border-radius: 3px; }
+    .version-badge { background: #e9d8fd; color: #553c9a; border-radius: 999px;
+                     padding: 0.2rem 0.75rem; font-size: 0.8rem; font-weight: 600; margin-left: auto; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚙️ Admin Dashboard</h1>
+  <nav>
+    <a href="/reviewer">Reviewer</a>
+    <a href="/manager">Manager</a>
+    <a href="/admin">Admin</a>
+    <a href="/health">Health</a>
+  </nav>
+  <span class="version-badge">v{{ version }}</span>
+</header>
+
+<div class="container">
+
+  <!-- System Health ──────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>System Health</h2>
+    <div id="healthBody">Loading…</div>
+    <button onclick="loadHealth()" style="margin-top:0.75rem">Refresh</button>
+  </div>
+
+  <!-- Log Level ──────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Log Level</h2>
+    <div class="row">
+      <label style="font-size:0.9rem">Current level: <span id="currentLevel" class="log-level-display">—</span></label>
+      <select id="logLevelSelect">
+        <option value="DEBUG">DEBUG</option>
+        <option value="INFO" selected>INFO</option>
+        <option value="WARNING">WARNING</option>
+        <option value="ERROR">ERROR</option>
+        <option value="CRITICAL">CRITICAL</option>
+      </select>
+      <button onclick="setLogLevel()">Apply</button>
+      <span id="logMsg" class="msg"></span>
+    </div>
+    <p style="font-size:0.8rem;color:#718096;margin-top:0.75rem">
+      Changes take effect immediately for all subsequent log calls (in-process only; resets on restart).
+    </p>
+  </div>
+
+  <!-- Token Usage ─────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>AI Token Usage</h2>
+    <div class="row" style="margin-bottom:0.75rem">
+      <input type="month" id="tokenMonth">
+      <button onclick="loadTokens()">Load</button>
+    </div>
+    <div id="tokenSummary" class="kpi-strip"></div>
+    <div id="tokenTableWrap"></div>
+  </div>
+
+</div>
+
+<script>
+  // ── Health ──────────────────────────────────────────────────────────
+  async function loadHealth() {
+    const res  = await fetch('/health');
+    const data = await res.json();
+
+    let html = `<div style="margin-bottom:0.5rem;font-size:0.95rem">
+      Status: <strong style="color:${data.status==='ok'?'#48bb78':'#f56565'}">${data.status.toUpperCase()}</strong>
+    </div>`;
+
+    for (const [key, val] of Object.entries(data.checks || {})) {
+      const ok = val === true;
+      html += `<div class="health-row">
+        <span class="badge ${ok ? 'health-ok' : 'health-err'}"></span>
+        <span class="key">${key.replace(/_/g,' ')}</span>
+        <span style="color:${ok?'#276749':'#c53030'}">${ok ? 'OK' : 'FAIL'}</span>
+      </div>`;
+    }
+    document.getElementById('healthBody').innerHTML = html;
+  }
+
+  // ── Log Level ────────────────────────────────────────────────────────
+  async function fetchCurrentLevel() {
+    try {
+      const res  = await fetch('/health');
+      const data = await res.json();
+      // Level not in health payload, but we can try to infer from checks being OK
+    } catch (e) {}
+    document.getElementById('currentLevel').textContent = document.getElementById('logLevelSelect').value;
+  }
+
+  async function setLogLevel() {
+    const level = document.getElementById('logLevelSelect').value;
+    const msgEl = document.getElementById('logMsg');
+    try {
+      const res  = await fetch('/admin/loglevel', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({level})
+      });
+      const data = await res.json();
+      if (data.ok) {
+        msgEl.textContent = `✅ Log level set to ${data.level}`;
+        msgEl.style.color = '#276749';
+        document.getElementById('currentLevel').textContent = data.level;
+      } else {
+        msgEl.textContent = '❌ ' + (data.detail || 'Error');
+        msgEl.style.color = '#c53030';
+      }
+    } catch (e) {
+      msgEl.textContent = '❌ Network error';
+      msgEl.style.color = '#c53030';
+    }
+  }
+
+  // ── Token Usage ──────────────────────────────────────────────────────
+  async function loadTokens() {
+    const month = document.getElementById('tokenMonth').value;
+    let url = '/admin/tokens';
+    if (month) url += '?month=' + month;
+
+    const res  = await fetch(url);
+    const data = await res.json();
+
+    document.getElementById('tokenSummary').innerHTML = `
+      <div class="kpi"><div class="v">${data.total_input_tokens.toLocaleString()}</div><div class="l">Input Tokens</div></div>
+      <div class="kpi"><div class="v">${data.total_output_tokens.toLocaleString()}</div><div class="l">Output Tokens</div></div>
+      <div class="kpi"><div class="v">$${data.total_cost_usd.toFixed(4)}</div><div class="l">Est. Cost (USD)</div></div>
+    `;
+
+    if (!data.records.length) {
+      document.getElementById('tokenTableWrap').innerHTML =
+        '<p style="color:#a0aec0;font-size:0.85rem;margin-top:0.75rem">No records for this month.</p>';
+      return;
+    }
+
+    const rows = data.records.slice().reverse().map(r =>
+      `<tr>
+        <td>${r.timestamp || ''}</td>
+        <td><code>${r.operation || ''}</code></td>
+        <td>${r.user_id || ''}</td>
+        <td>${(r.input_tokens||0).toLocaleString()}</td>
+        <td>${(r.output_tokens||0).toLocaleString()}</td>
+        <td>$${(r.cost_usd||0).toFixed(5)}</td>
+      </tr>`
+    ).join('');
+
+    document.getElementById('tokenTableWrap').innerHTML = `
+      <table class="token-table">
+        <thead>
+          <tr><th>Timestamp</th><th>Operation</th><th>User ID</th>
+              <th>Input Tokens</th><th>Output Tokens</th><th>Cost (USD)</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="font-size:0.75rem;color:#a0aec0;margin-top:0.5rem">Showing last 100 records</p>
+    `;
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────
+  const now   = new Date();
+  const month = now.toISOString().slice(0, 7);
+  document.getElementById('tokenMonth').value = month;
+
+  loadHealth();
+  loadTokens();
+  document.getElementById('currentLevel').textContent = 'INFO';
+</script>
+</body>
+</html>

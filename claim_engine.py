@@ -1,6 +1,7 @@
 import io
 import json
 import base64
+import logging
 import tempfile
 import time
 import re
@@ -21,6 +22,9 @@ from flex_messages import (
     create_analysis_result_flex,
     create_next_steps_flex
 )
+
+# Module-level logger — all functions must use logger.* not print()
+logger = logging.getLogger(__name__)
 
 def extract_phone_from_response(text: str) -> Optional[str]:
     """สกัดเบอร์โทรศัพท์จากข้อความตอบกลับของ AI"""
@@ -67,7 +71,7 @@ def extract_info_from_image_with_gemini(gemini_model, image_bytes: bytes) -> Dic
         return {"type": "unknown", "value": None}
 
     except Exception as e:
-        print(f"Error in extract_info_from_image_with_gemini: {str(e)}")
+        logger.exception("extract_info_from_image_with_gemini failed")
         return {"type": "unknown", "value": None}
 
 def analyze_damage_with_gemini(
@@ -188,7 +192,7 @@ def analyze_damage_with_gemini(
         return response.text
 
     except Exception as e:
-        print(f"Gemini API Error: {str(e)}")
+        logger.exception("analyze_damage_with_gemini failed")
         return f"❌ เกิดข้อผิดพลาดในการวิเคราะห์: {str(e)}"
 
 def start_claim_analysis(
@@ -258,7 +262,7 @@ def start_claim_analysis(
         user_sessions[user_id]["state"] = "completed"
 
     except Exception as e:
-        print(f"❌ Error in start_claim_analysis: {str(e)}")
+        logger.exception("start_claim_analysis failed user_id=%s", user_id)
         line_bot_api.push_message(
             PushMessageRequest(
                 to=user_id,

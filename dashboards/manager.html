@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manager Dashboard — LINE Insurance Claims Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #f0f4f8; color: #2d3748; }
+    header { background: #276749; color: white; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; }
+    header h1 { margin: 0; font-size: 1.3rem; }
+    nav a { color: rgba(255,255,255,0.8); text-decoration: none; margin-left: 1.5rem; font-size: 0.9rem; }
+    nav a:hover { color: white; }
+    .container { max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; }
+    .filters { background: white; border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 1.5rem;
+                display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
+    .filter-group label { font-size: 0.75rem; color: #718096; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    input[type=date] { border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.9rem; }
+    button { background: #276749; color: white; border: none; border-radius: 6px;
+              padding: 0.45rem 1.2rem; cursor: pointer; font-size: 0.9rem; }
+    button:hover { background: #22543d; }
+
+    /* KPI cards */
+    .kpi-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .kpi { background: white; border-radius: 8px; padding: 1.2rem; text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .kpi .value { font-size: 2rem; font-weight: 700; color: #276749; }
+    .kpi .label { font-size: 0.78rem; color: #718096; margin-top: 0.25rem; }
+
+    /* Charts area */
+    .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+    .chart-card { background: white; border-radius: 8px; padding: 1.2rem;
+                  box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .chart-card h3 { margin: 0 0 1rem; font-size: 0.95rem; color: #2d3748; }
+    canvas { max-width: 100%; }
+
+    /* Trend */
+    .trend-card { background: white; border-radius: 8px; padding: 1.2rem;
+                  box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+    .trend-card h3 { margin: 0 0 1rem; font-size: 0.95rem; }
+
+    .loader { text-align: center; padding: 3rem; color: #a0aec0; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>📊 Manager Dashboard</h1>
+  <nav>
+    <a href="/reviewer">Reviewer</a>
+    <a href="/manager">Manager</a>
+    <a href="/admin">Admin</a>
+    <a href="/health">Health</a>
+  </nav>
+</header>
+
+<div class="container">
+  <!-- Date filters -->
+  <div class="filters">
+    <div class="filter-group">
+      <label>From Date</label>
+      <input type="date" id="dateFrom">
+    </div>
+    <div class="filter-group">
+      <label>To Date</label>
+      <input type="date" id="dateTo">
+    </div>
+    <button onclick="loadData()">Apply</button>
+    <button onclick="resetDates()" style="background:#718096">Reset</button>
+  </div>
+
+  <!-- KPI strip -->
+  <div id="kpiRow" class="kpi-row">
+    <div class="loader">Loading…</div>
+  </div>
+
+  <!-- Charts row -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <h3>Claims by Status</h3>
+      <canvas id="statusChart" height="200"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Claims by Type</h3>
+      <canvas id="typeChart" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Daily trend -->
+  <div class="trend-card">
+    <h3>Daily Submissions</h3>
+    <canvas id="trendChart" height="100"></canvas>
+  </div>
+</div>
+
+<script>
+  let statusChartInst = null, typeChartInst = null, trendChartInst = null;
+
+  function resetDates() {
+    document.getElementById('dateFrom').value = '';
+    document.getElementById('dateTo').value   = '';
+    loadData();
+  }
+
+  async function loadData() {
+    const from = document.getElementById('dateFrom').value;
+    const to   = document.getElementById('dateTo').value;
+    let url = '/manager/data';
+    const params = [];
+    if (from) params.push('date_from=' + from);
+    if (to)   params.push('date_to='   + to);
+    if (params.length) url += '?' + params.join('&');
+
+    const res  = await fetch(url);
+    const data = await res.json();
+
+    renderKPIs(data);
+    renderStatusChart(data.status_counts);
+    renderTypeChart(data.type_counts);
+    renderTrend(data.daily_counts);
+  }
+
+  function renderKPIs(data) {
+    const sc = data.status_counts || {};
+    const kpis = [
+      { value: data.total,             label: 'Total Claims' },
+      { value: sc['Submitted'] || 0,   label: 'Submitted' },
+      { value: sc['Under Review'] || 0,label: 'Under Review' },
+      { value: sc['Approved'] || 0,    label: 'Approved' },
+      { value: sc['Rejected'] || 0,    label: 'Rejected' },
+      { value: sc['Paid'] || 0,        label: 'Paid' },
+    ];
+    const html = kpis.map(k =>
+      `<div class="kpi"><div class="value">${k.value}</div><div class="label">${k.label}</div></div>`
+    ).join('');
+    document.getElementById('kpiRow').innerHTML = html;
+  }
+
+  function renderStatusChart(counts) {
+    const labels = Object.keys(counts);
+    const values = Object.values(counts);
+    const colours = ['#fefcbf','#bee3f8','#c6f6d5','#fed7d7','#e9d8fd','#b2f5ea','#feebc8'];
+    const ctx = document.getElementById('statusChart').getContext('2d');
+    if (statusChartInst) statusChartInst.destroy();
+    statusChartInst = new Chart(ctx, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: values, backgroundColor: colours, borderWidth: 1 }] },
+      options: { plugins: { legend: { position: 'bottom' } } }
+    });
+  }
+
+  function renderTypeChart(counts) {
+    const ctx = document.getElementById('typeChart').getContext('2d');
+    if (typeChartInst) typeChartInst.destroy();
+    typeChartInst = new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels: ['CD – Car Damage', 'H – Health'],
+        datasets: [{ data: [counts.CD || 0, counts.H || 0],
+          backgroundColor: ['#bee3f8', '#c6f6d5'], borderWidth: 1 }]
+      },
+      options: { plugins: { legend: { position: 'bottom' } } }
+    });
+  }
+
+  function renderTrend(daily) {
+    const labels = Object.keys(daily);
+    const values = Object.values(daily);
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    if (trendChartInst) trendChartInst.destroy();
+    trendChartInst = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Claims submitted',
+          data: values,
+          backgroundColor: 'rgba(39,103,73,0.6)',
+          borderColor: '#276749',
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+
+  // Load on init
+  loadData();
+  // Auto-refresh every 60 s
+  setInterval(loadData, 60000);
+</script>
+</body>
+</html>

@@ -1,5 +1,21 @@
+"""
+main.py — LINE Insurance Claims Bot v2.0
+FastAPI + LINE SDK v3 + Google Gemini AI
+
+12-Factor compliance:
+  III  – All config via env vars (see constants.py + .env.example)
+  VI   – Stateless process: in-memory sessions + /data volume
+  VII  – Port binding: Uvicorn :8000
+  IX   – Disposability: lifespan context, fast startup
+  XI   – Logs as event streams: logging → stdout + rotating file
+"""
+
+import logging
+import os
 import re
-from fastapi import FastAPI, Request, HTTPException
+
+import httpx
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -16,7 +32,6 @@ from linebot.v3.webhooks import (
     TextMessageContent,
     ImageMessageContent
 )
-import httpx
 
 # 1. Config & AI Models
 from config import (
@@ -57,8 +72,12 @@ from flex_messages import (
 # 5. Claim Engine (AI Logic)
 from claim_engine import (
     extract_info_from_image_with_gemini,
-    start_claim_analysis
+    start_claim_analysis,
+    extract_phone_from_response,
 )
+
+# Module-level logger — all handlers must use logger.* not print()
+logger = logging.getLogger(__name__)
 
 # สร้าง FastAPI App
 app = FastAPI(title="LINE Insurance Claim Bot")
@@ -70,8 +89,8 @@ def handle_text_message(event):
     """จัดการข้อความตัวอักษร"""
     user_id = event.source.user_id
     text = event.message.text.strip()
-    print(f"📩 ได้รับข้อความจาก {user_id}: {text}")
-    
+    logger.info("received_text user_id=%s chars=%d", user_id, len(text))
+
     session = get_session(user_id)
     current_state = session.get("state")
 
@@ -139,7 +158,7 @@ def handle_text_message(event):
                         messages=[TextMessage(text="📝 บันทึกข้อมูลเรียบร้อยค่ะ กำลังส่งให้ AI วิเคราะห์สิทธิ์ให้ทันที...")]
                     )
                 )
-                
+
                 start_claim_analysis(
                     line_bot_api, gemini_model, genai, user_id,
                     session.get("temp_image_bytes"), session.get("policy_info"),
@@ -200,9 +219,8 @@ def handle_text_message(event):
                 )
 
         except Exception as e:
-            print(f"❌ Error in handle_text_message: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error in handle_text_message user_id=%s", user_id)
+
 
 @handler.add(MessageEvent, message=ImageMessageContent)
 def handle_image_message(event):
@@ -210,7 +228,7 @@ def handle_image_message(event):
     user_id = event.source.user_id
     session = get_session(user_id)
     current_state = session.get("state")
-    print(f"🖼️ ได้รับรูปภาพจาก: {user_id} (State: {current_state})")
+    logger.info("received_image user_id=%s state=%s", user_id, current_state)
 
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
@@ -222,6 +240,7 @@ def handle_image_message(event):
             headers = {"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"}
             with httpx.Client() as client:
                 response = client.get(image_url, headers=headers)
+                response.raise_for_status()
                 image_bytes = response.content
 
             # Case 1: OCR เพื่อหาข้อมูลกรมธรรม์
@@ -239,16 +258,16 @@ def handle_image_message(event):
                 elif info["type"] == "license_plate" and info["value"]:
                     policy = search_policies_by_plate(info["value"])
                     policies = [policy] if policy else []
-                
+
                 process_search_result(line_bot_api, event, user_id, policies, use_push=True)
 
             # Case 2: รูปความเสียหาย
             elif current_state == "waiting_for_image":
-                set_state(user_id, "waiting_for_additional_info", 
-                          temp_image_bytes=image_bytes, 
+                set_state(user_id, "waiting_for_additional_info",
+                          temp_image_bytes=image_bytes,
                           policy_info=session.get("policy_info"),
                           has_counterpart=session.get("has_counterpart"))
-                
+
                 flex_prompt = create_additional_info_prompt_flex()
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
@@ -281,32 +300,59 @@ def handle_image_message(event):
                 )
 
         except Exception as e:
-            print(f"❌ Error in handle_image_message: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error in handle_image_message user_id=%s", user_id)
+
 
 # ==================== FastAPI Endpoints ====================
 
-@app.post("/webhook")
-async def webhook(request: Request):
+@app.get("/")
+async def root():
+    return JSONResponse({"status": "running", "message": "LINE Insurance Claim Bot", "version": "2.0.0"})
+
+
+async def _handle_webhook(request: Request):
     signature = request.headers.get("X-Line-Signature")
     body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty body")
     try:
         handler.handle(body.decode("utf-8"), signature)
     except InvalidSignatureError:
-        raise HTTPException(status_code=400)
-    except Exception as e:
-        print(f"Webhook error: {str(e)}")
-        raise HTTPException(status_code=500)
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    except (ValueError, KeyError, UnicodeDecodeError) as exc:
+        # Malformed JSON, missing 'events' key, or non-UTF-8 encoding — all are
+        # client errors. Return 400 rather than letting them bubble to 500.
+        logger.warning("malformed_webhook body_len=%d error=%s", len(body), exc)
+        raise HTTPException(status_code=400, detail="Malformed request body")
     return JSONResponse(content={"status": "ok"})
+
+
+
+@app.post("/callback")
+async def callback(request: Request):
+    return await _handle_webhook(request)
+
+
+@app.post("/webhook")
+async def webhook(request: Request):
+    return await _handle_webhook(request)
+
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    line_ok = bool(LINE_CHANNEL_ACCESS_TOKEN and LINE_CHANNEL_SECRET)
+    gemini_ok = bool(GEMINI_API_KEY)
+    checks = {"line_api": line_ok, "gemini_api": gemini_ok}
+    status = "healthy" if (line_ok and gemini_ok) else "degraded"
+    return JSONResponse({
+        "status": status,
+        "line_configured": line_ok,
+        "gemini_configured": gemini_ok,
+        "checks": checks,
+    })
 
 if __name__ == "__main__":
     import uvicorn
-    import os
     port = int(os.getenv("PORT", 8000))
-    print(f"🚀 Bot starting on port {port}...")
+    logger.info("Bot starting on port %d", port)
     uvicorn.run(app, host="0.0.0.0", port=port)
