@@ -80,6 +80,18 @@ from local_chat import router as local_chat_router
 # 6. Dashboards Router
 from dashboards_router import router as dashboards_router
 
+# 6. v2 Handlers (Document Verify & Claim Submission)
+from handlers.documents import (
+    handle_counterpart_answer,
+    handle_ownership_answer,
+    handle_document_image,
+)
+from handlers.submit import handle_submit_request
+
+# 7. Storage (Claim & Sequence)
+from storage.sequence import next_claim_id
+from storage.claim_store import create_claim
+
 # Module-level logger — all handlers must use logger.* not print()
 logger = logging.getLogger(__name__)
 
