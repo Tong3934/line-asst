@@ -76,6 +76,18 @@ from claim_engine import (
     extract_phone_from_response,
 )
 
+# 6. v2 Handlers (Document Verify & Claim Submission)
+from handlers.documents import (
+    handle_counterpart_answer,
+    handle_ownership_answer,
+    handle_document_image,
+)
+from handlers.submit import handle_submit_request
+
+# 7. Storage (Claim & Sequence)
+from storage.sequence import next_claim_id
+from storage.claim_store import create_claim
+
 # Module-level logger — all handlers must use logger.* not print()
 logger = logging.getLogger(__name__)
 
@@ -169,18 +181,72 @@ def handle_text_message(event):
             # Case 5: จบการวิเคราะห์ (เลือกว่าจะส่งเคลม หรือ จบ)
             if current_state == "completed":
                 if text == "ส่งเคลม":
-                    set_state(user_id, "waiting_for_claim_documents", policy_info=session.get("policy_info"))
-                    instructions = create_claim_submission_instructions_flex()
+                    # ── Bridge v1 → v2: สร้าง Claim ID แล้วเข้า flow ส่งเอกสาร ──
+                    from flex_messages import (
+                        create_claim_confirmed_flex,
+                        create_document_checklist_flex,
+                    )
+
+                    claim_type = "CD"
+                    claim_id = next_claim_id(claim_type)
+                    has_counterpart = session.get("has_counterpart")
+                    policy_info = session.get("policy_info")
+
+                    create_claim(
+                        claim_id, claim_type, user_id,
+                        has_counterpart=has_counterpart,
+                    )
+
+                    # Set up v2 session structure
+                    user_sessions[user_id] = {
+                        "state": "uploading_documents",
+                        "claim_id": claim_id,
+                        "claim_type": claim_type,
+                        "policy_info": policy_info,
+                        "has_counterpart": has_counterpart,
+                        "search_results": [],
+                        "uploaded_docs": {},
+                        "awaiting_ownership_for": None,
+                        "additional_info": None,
+                    }
+
+                    confirm_flex = create_claim_confirmed_flex(claim_id, claim_type)
+                    checklist_flex = create_document_checklist_flex(
+                        claim_type, has_counterpart, {},
+                    )
+
                     line_bot_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
                             messages=[
-                                TextMessage(text="🚀 ยินดีประสานงานให้ค่ะ! เรามาเริ่มขั้นตอนการรวบรวมเอกสารกันเลย"),
-                                FlexMessage(alt_text="คำแนะนำการส่งเอกสาร", contents=instructions)
-                            ]
+                                FlexMessage(
+                                    alt_text=f"Claim ID: {claim_id}",
+                                    contents=confirm_flex,
+                                ),
+                                TextMessage(
+                                    text="🚀 เริ่มขั้นตอนรวบรวมเอกสารค่ะ กรุณาส่งรูปเอกสารทีละรายการตามรายการด้านล่าง",
+                                ),
+                                FlexMessage(
+                                    alt_text="รายการเอกสารที่ต้องการ / Required documents",
+                                    contents=checklist_flex,
+                                ),
+                            ],
+                        )
+                    )
+                    logger.info("Bridged v1→v2 claim=%s user_id=%s", claim_id, user_id)
+                    return
+
+                elif text == "วิเคราะห์คันถัดไป":
+                    reset_session(user_id, initial_state="waiting_for_info")
+                    flex_message = create_request_info_flex()
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[FlexMessage(alt_text="กรุณาส่งข้อมูลเพื่อตรวจสอบสิทธิ์", contents=flex_message)]
                         )
                     )
                     return
+
                 elif text == "จบการสนทนา":
                     reset_session(user_id)
                     line_bot_api.reply_message(
@@ -191,13 +257,55 @@ def handle_text_message(event):
                     )
                     return
 
-            # Case 6: ส่งเอกสารเสร็จสิ้น
-            if current_state == "waiting_for_claim_documents" and text == "เสร็จสิ้น":
+            # ── v2 States: Document Upload Flow ──────────────────────────
+
+            # Case 6: ตอบคำถามคู่กรณี (v2)
+            if current_state == "waiting_for_counterpart" and session.get("claim_id"):
+                handle_counterpart_answer(line_bot_api, event, user_id, user_sessions, text)
+                return
+
+            # Case 7: ยืนยันเจ้าของใบขับขี่ (v2)
+            if current_state == "awaiting_ownership":
+                handle_ownership_answer(line_bot_api, event, user_id, user_sessions, text)
+                return
+
+            # Case 8: อัปโหลดเอกสาร — text ที่ไม่ใช่คำสั่งพิเศษ จะถูก ignore
+            if current_state == "uploading_documents":
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(
+                            text="📸 กรุณาส่งรูปเอกสารค่ะ (ใบขับขี่, เล่มทะเบียน, รูปความเสียหาย ฯลฯ)\n\nหากต้องการยกเลิก พิมพ์ 'ยกเลิก'"
+                        )],
+                    )
+                )
+                return
+
+            # Case 9: พร้อมส่งเคลม (v2)
+            if current_state == "ready_to_submit":
+                if text in ("ยืนยันส่งเคลม", "ส่งเคลม", "ยืนยัน", "confirm"):
+                    handle_submit_request(line_bot_api, event, user_id, user_sessions)
+                    return
+                else:
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(
+                                text="� เอกสารครบแล้วค่ะ! กด 'ยืนยันส่งเคลม' เพื่อส่งคำร้อง\n\nหรือส่งรูปเอกสารเพิ่มเติมได้"
+                            )],
+                        )
+                    )
+                    return
+
+            # Case 10: ส่งเคลมเสร็จแล้ว (v2)
+            if current_state == "submitted":
                 reset_session(user_id)
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(text="🙏 ได้รับเอกสารครบถ้วนแล้วค่ะ เจ้าหน้าที่จะรีบดำเนินการตรวจสอบและแจ้งความคืบหน้าให้ทราบโดยเร็วที่สุดนะคะ\n\nขอบคุณที่ใช้บริการค่ะ!")]
+                        messages=[TextMessage(
+                            text="✅ คำร้องของคุณถูกส่งเรียบร้อยแล้วค่ะ\n\nหากต้องการเริ่มเคลมใหม่ พิมพ์ 'เช็คสิทธิ์เคลมด่วน'"
+                        )],
                     )
                 )
                 return
@@ -279,16 +387,17 @@ def handle_image_message(event):
                     )
                 )
 
-            # Case 3: รับเอกสารส่งเคลม (หลายไฟล์)
-            elif current_state == "waiting_for_claim_documents":
+            # Case 3: อัปโหลดเอกสาร (v2 flow — AI categorise + extract)
+            elif current_state in ("uploading_documents", "ready_to_submit"):
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[
-                            TextMessage(text="✅ ได้รับเอกสารเรียบร้อยค่ะ!"),
-                            TextMessage(text="หากมีเอกสารหรือรูปถ่ายอื่นเพิ่มเติม สามารถส่งมาต่อได้ทันทีค่ะ หรือพิมพ์ 'เสร็จสิ้น' เมื่อส่งครบแล้ว")
-                        ]
+                        messages=[TextMessage(text="⏳ กำลังตรวจสอบเอกสาร...")],
                     )
+                )
+                handle_document_image(
+                    line_bot_api, user_id, user_sessions,
+                    image_bytes, content_type="image/jpeg",
                 )
 
             else:
