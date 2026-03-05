@@ -18,7 +18,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from PIL import Image, ExifTags
 
-from ai import call_gemini
+from ai import call_ai
 
 logger = logging.getLogger(__name__)
 
@@ -86,16 +86,27 @@ Return JSON only:
 }}
 {_COMMON_RULES}""",
 
-    "vehicle_registration": f"""Extract fields from this Thai vehicle registration document.
+    "vehicle_registration": f"""Extract fields from this Thai vehicle registration document (รายการจดทะเบียน / สมุดคู่มือรถ).
+
+Common Thai field labels on the document:
+- เลขทะเบียน = license plate
+- จังหวัด = province
+- ประเภท = vehicle type
+- ยี่ห้อรถ = brand/manufacturer
+- เลขตัวรถ = chassis number / VIN
+- เลขเครื่องยนต์/มอเตอร์ = engine number
+- รุ่นปี ค.ศ. or พ.ศ. = model year
+- สี = color
+
 Return JSON only:
 {{
-  "plate": "<license plate text or null>",
-  "province": "<province name in Thai or null>",
-  "vehicle_type": "<vehicle type in Thai or null>",
-  "brand": "<manufacturer brand or null>",
-  "chassis_number": "<17-character VIN / chassis number or null>",
+  "plate": "<license plate text e.g. 'ผร 6927' or null>",
+  "province": "<province name in Thai e.g. 'นครราชสีมา' or null>",
+  "vehicle_type": "<vehicle type in Thai e.g. 'รถยนต์นั่งส่วนบุคคล' or null>",
+  "brand": "<manufacturer brand e.g. 'ISUZU', 'Toyota' or null>",
+  "chassis_number": "<chassis/VIN number or null>",
   "engine_number": "<engine number or null>",
-  "model_year": "<4-digit year or null>"
+  "model_year": "<4-digit Gregorian year or null>"
 }}
 {_COMMON_RULES}""",
 
@@ -200,7 +211,7 @@ def extract_fields(image_bytes: bytes, category: str) -> Dict[str, Any]:
 
     try:
         img = Image.open(io.BytesIO(image_bytes))
-        raw = call_gemini(f"extract_{category}", prompt, img)
+        raw = call_ai(f"extract_{category}", prompt, img)
 
         # Parse JSON from response
         match = re.search(r'\{.*\}', raw, re.DOTALL)

@@ -1,6 +1,6 @@
 """
 main.py — LINE Insurance Claims Bot v2.0
-FastAPI + LINE SDK v3 + Google Gemini AI
+FastAPI + LINE SDK v3 + Azure OpenAI
 
 12-Factor compliance:
   III  – All config via env vars (see constants.py + .env.example)
@@ -12,7 +12,6 @@ FastAPI + LINE SDK v3 + Google Gemini AI
 
 import logging
 import os
-import re
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -25,12 +24,15 @@ from linebot.v3.messaging import (
     ReplyMessageRequest,
     PushMessageRequest,
     TextMessage,
-    FlexMessage
+    FlexMessage,
+    QuickReply,
+    QuickReplyItem,
+    MessageAction,
 )
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
-    ImageMessageContent
+    ImageMessageContent,
 )
 
 # 1. Config & AI Models
@@ -39,54 +41,59 @@ from config import (
     LINE_CHANNEL_SECRET,
     GEMINI_API_KEY,
     configuration,
-    gemini_model,
-    genai,
-    handler
+    handler,
 )
 
 # 2. Session & State Management
 from session_manager import (
     user_sessions,
     get_session,
-    set_state,
     reset_session,
-    process_search_result
 )
 
-# 3. Mock Data
-from mock_data import (
-    search_policies_by_cid,
-    search_policies_by_name,
-    search_policies_by_plate,
-    search_policies_by_phone
+# 3. v2 Handlers — all state transitions delegated here
+from handlers.trigger import (
+    is_trigger,
+    handle_trigger,
+    handle_claim_type_selection,
 )
+from handlers.identity import (
+    handle_policy_text,
+    handle_policy_image,
+    handle_vehicle_selection,
+)
+from handlers.documents import (
+    handle_document_image,
+    handle_damage_photo_image,
+    handle_confirm_claim,
+    handle_identity_doc_image,
+    handle_counterpart_answer,
+    handle_ownership_answer,
+)
+from handlers.submit import handle_submit_request
 
-# 4. Flex Messages
-from flex_messages import (
-    create_request_info_flex,
-    create_additional_info_prompt_flex,
-    create_policy_info_flex,
-    create_claim_submission_instructions_flex
-)
+# 4. Constants
+from constants import CANCEL_KEYWORDS
 
-# 5. Claim Engine (AI Logic)
-from claim_engine import (
-    extract_info_from_image_with_gemini,
-    start_claim_analysis,
-    extract_phone_from_response,
-)
+from local_chat import router as local_chat_router
+
+# 6. Dashboards Router
+from dashboards_router import router as dashboards_router
 
 # Module-level logger — all handlers must use logger.* not print()
 logger = logging.getLogger(__name__)
 
 # สร้าง FastAPI App
 app = FastAPI(title="LINE Insurance Claim Bot")
+app.include_router(local_chat_router)
+app.include_router(dashboards_router)
 
 # ==================== LINE Bot Handlers ====================
 
+
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event):
-    """จัดการข้อความตัวอักษร"""
+    """จัดการข้อความตัวอักษร — delegates to v2 handler modules."""
     user_id = event.source.user_id
     text = event.message.text.strip()
     logger.info("received_text user_id=%s chars=%d", user_id, len(text))
@@ -98,125 +105,167 @@ def handle_text_message(event):
         line_bot_api = MessagingApi(api_client)
 
         try:
-            # Case 1: เริ่มต้น Flow
-            if text == "เช็คสิทธิ์เคลมด่วน":
-                reset_session(user_id, initial_state="waiting_for_info")
-                flex_message = create_request_info_flex()
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[FlexMessage(alt_text="กรุณาส่งข้อมูลเพื่อตรวจสอบสิทธิ์", contents=flex_message)]
-                    )
-                )
-                return
-
-            # Case 2: ค้นหากรมธรรม์
-            if current_state == "waiting_for_info":
-                text_clean = text.replace('-', '').replace(' ', '')
-                if re.match(r'^\d{13}$', text_clean):
-                    policies = search_policies_by_cid(text_clean)
-                elif re.match(r'^\d{9,10}$', text_clean):
-                    policies = search_policies_by_phone(text_clean)
-                else:
-                    policy = search_policies_by_plate(text)
-                    policies = [policy] if policy else search_policies_by_name(text)
-
-                process_search_result(line_bot_api, event, user_id, policies)
-                return
-
-            # Case 2.1: เลือกรถ (กรณีเจอนามสกุล/CID เดียวกันหลายคัน)
-            if current_state == "waiting_for_vehicle_selection":
-                if text.startswith("เลือกรถ:"):
-                    plate = text.replace("เลือกรถ:", "")
-                    search_results = session.get("search_results", [])
-                    policy_info = next((p for p in search_results if p["plate"] == plate), None)
-                    if policy_info:
-                        process_search_result(line_bot_api, event, user_id, [policy_info])
-                return
-
-            # Case 3: ถามเรื่องคู่กรณี
-            if current_state == "waiting_for_counterpart":
-                if text in ["มีคู่กรณี", "ไม่มีคู่กรณี"]:
-                    set_state(user_id, "waiting_for_image", has_counterpart=text, policy_info=session.get("policy_info"))
-                    line_bot_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[
-                                TextMessage(text=f"รับทราบค่ะ ({text})\n\n📸 ขั้นตอนต่อไป: กรุณาส่งรูปภาพความเสียหายของรถค่ะ"),
-                                TextMessage(text="เพื่อให้ AI เริ่มต้นการประเมินเบื้องต้น")
-                            ]
-                        )
-                    )
-                return
-
-            # Case 4: รับข้อมูลเพิ่มเติม (หลังส่งรูป)
-            if current_state == "waiting_for_additional_info":
-                additional_info = text if text != "ข้าม" else None
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text="📝 บันทึกข้อมูลเรียบร้อยค่ะ กำลังส่งให้ AI วิเคราะห์สิทธิ์ให้ทันที...")]
-                    )
-                )
-
-                start_claim_analysis(
-                    line_bot_api, gemini_model, genai, user_id,
-                    session.get("temp_image_bytes"), session.get("policy_info"),
-                    additional_info, session.get("has_counterpart"), user_sessions
-                )
-                return
-
-            # Case 5: จบการวิเคราะห์ (เลือกว่าจะส่งเคลม หรือ จบ)
-            if current_state == "completed":
-                if text == "ส่งเคลม":
-                    set_state(user_id, "waiting_for_claim_documents", policy_info=session.get("policy_info"))
-                    instructions = create_claim_submission_instructions_flex()
-                    line_bot_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[
-                                TextMessage(text="🚀 ยินดีประสานงานให้ค่ะ! เรามาเริ่มขั้นตอนการรวบรวมเอกสารกันเลย"),
-                                FlexMessage(alt_text="คำแนะนำการส่งเอกสาร", contents=instructions)
-                            ]
-                        )
-                    )
-                    return
-                elif text == "จบการสนทนา":
-                    reset_session(user_id)
-                    line_bot_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[TextMessage(text="🙏 ขอบคุณที่ใช้บริการเช็คสิทธิ์เคลมด่วนค่ะ หากต้องการความช่วยเหลือเพิ่มเติม สามารถพิมพ์หาเราได้ตลอดเวลานะคะ\n\nโชคดีและเดินทางปลอดภัยค่ะ! 🚗✨")]
-                        )
-                    )
-                    return
-
-            # Case 6: ส่งเอกสารเสร็จสิ้น
-            if current_state == "waiting_for_claim_documents" and text == "เสร็จสิ้น":
+            # ── Cancel keywords (any active state) ──────────────────────
+            if current_state not in (None, "idle") and text.lower() in CANCEL_KEYWORDS:
                 reset_session(user_id)
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(text="🙏 ได้รับเอกสารครบถ้วนแล้วค่ะ เจ้าหน้าที่จะรีบดำเนินการตรวจสอบและแจ้งความคืบหน้าให้ทราบโดยเร็วที่สุดนะคะ\n\nขอบคุณที่ใช้บริการค่ะ!")]
+                        messages=[
+                            TextMessage(
+                                text="🔄 ยกเลิกแล้วค่ะ / Session cancelled.\n\nพิมพ์ข้อความใหม่เพื่อเริ่มต้นได้เลยค่ะ",
+                            )
+                        ],
                     )
                 )
                 return
 
-            # Fallback for general menu
-            if current_state == "completed" or current_state == "idle" or current_state is None:
-                from linebot.v3.messaging import QuickReply, QuickReplyItem, MessageAction
-                quick_reply = QuickReply(items=[
-                    QuickReplyItem(action=MessageAction(label="🚀 เช็คสิทธิ์เคลมด่วน", text="เช็คสิทธิ์เคลมด่วน"))
-                ])
+            # ── Trigger detection (idle / no state) ─────────────────────
+            if current_state in (None, "idle"):
+                if is_trigger(text):
+                    handle_trigger(line_bot_api, event, user_id, user_sessions, text)
+                    return
+                # Not a trigger — show menu
+                quick_reply = QuickReply(
+                    items=[QuickReplyItem(action=MessageAction(label="🚀 เช็คสิทธิ์เคลมด่วน", text="เช็คสิทธิ์เคลมด่วน"))]
+                )
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(
-                            text='👋 สวัสดีค่ะ!\n\nต้องการตรวจสอบสิทธิ์การเคลมประกันรถยนต์ด้วย AI หรือแจ้งเหตุฉุกเฉิน กดปุ่มด้านล่างได้เลยค่ะ',
-                            quick_reply=quick_reply
-                        )]
+                        messages=[
+                            TextMessage(
+                                text="👋 สวัสดีค่ะ!\n\nต้องการตรวจสอบสิทธิ์การเคลมประกัน กดปุ่มด้านล่างได้เลยค่ะ",
+                                quick_reply=quick_reply,
+                            )
+                        ],
                     )
                 )
+                return
+
+            # ── Claim type selection (ambiguous trigger) ────────────────
+            if current_state == "detecting_claim_type":
+                handle_claim_type_selection(line_bot_api, event, user_id, user_sessions, text)
+                return
+
+            # ── Policy verification by text ─────────────────────────────
+            if current_state == "verifying_policy":
+                handle_policy_text(line_bot_api, event, user_id, user_sessions, text)
+                return
+
+            # ── Vehicle selection ────────────────────────────────────────
+            if current_state == "waiting_for_vehicle_selection":
+                handle_vehicle_selection(line_bot_api, event, user_id, user_sessions, text)
+                return
+
+            # ── Counterpart question (CD only) ──────────────────────────
+            if current_state == "waiting_for_counterpart":
+                handle_counterpart_answer(line_bot_api, event, user_id, user_sessions, text)
+                return
+
+            # ── Phase 1: Damage photos — text reminder (CD) ─────────────
+            if current_state == "uploading_damage_photos":
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            TextMessage(
+                                text="📸 กรุณาส่งรูปถ่ายความเสียหายของรถค่ะ / Please send car damage photos.\n\nพิมพ์ 'ยกเลิก' เพื่อเริ่มใหม่ / Type 'ยกเลิก' to cancel.",
+                            )
+                        ],
+                    )
+                )
+                return
+
+            # ── Phase 2: Confirm claim (CD) ─────────────────────────────
+            if current_state == "confirming_claim":
+                handle_confirm_claim(line_bot_api, event, user_id, user_sessions, text)
+                return
+
+            # ── Phase 3: Identity docs — text reminder (CD) ─────────────
+            if current_state == "uploading_identity_docs":
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            TextMessage(
+                                text="📄 กรุณาส่งรูปใบขับขี่หรือสมุดเล่มทะเบียนรถค่ะ / Please send driving license or vehicle registration photo.\n\nพิมพ์ 'ยกเลิก' เพื่อเริ่มใหม่ / Type 'ยกเลิก' to cancel.",
+                            )
+                        ],
+                    )
+                )
+                return
+
+            # ── Ownership answer (driving license counterpart) ──────────
+            if current_state == "awaiting_ownership":
+                handle_ownership_answer(line_bot_api, event, user_id, user_sessions, text)
+                return
+
+            # ── Document upload state — text reminders (H claims) ───────
+            if current_state == "uploading_documents":
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            TextMessage(
+                                text="📸 กรุณาส่งรูปถ่ายเอกสารค่ะ / Please send a document photo.\n\nพิมพ์ 'ยกเลิก' เพื่อเริ่มใหม่ / Type 'ยกเลิก' to cancel.",
+                            )
+                        ],
+                    )
+                )
+                return
+
+            # ── Submit claim ────────────────────────────────────────────
+            if current_state == "ready_to_submit":
+                if text in ("ส่งคำร้อง", "ส่งเคลม"):
+                    handle_submit_request(line_bot_api, event, user_id, user_sessions)
+                    return
+                # any other text — remind them with a clickable button
+                submit_qr = QuickReply(
+                    items=[QuickReplyItem(action=MessageAction(label="📤 ส่งคำร้อง", text="ส่งคำร้อง"))]
+                )
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            TextMessage(
+                                text="📋 เอกสารครบแล้วค่ะ กด 'ส่งคำร้อง' เพื่อส่ง / Documents complete. Tap 'ส่งคำร้อง' to submit.",
+                                quick_reply=submit_qr,
+                            )
+                        ],
+                    )
+                )
+                return
+
+            # ── Submitted — session done ────────────────────────────────
+            if current_state == "submitted":
+                reset_session(user_id)
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            TextMessage(
+                                text="🙏 ขอบคุณที่ใช้บริการค่ะ! / Thank you!\n\nพิมพ์ข้อความใหม่เพื่อเริ่มต้นเคลมใหม่ได้เลยค่ะ",
+                            )
+                        ],
+                    )
+                )
+                return
+
+            # ── Fallback — show menu ────────────────────────────────────
+            quick_reply = QuickReply(
+                items=[QuickReplyItem(action=MessageAction(label="🚀 เช็คสิทธิ์เคลมด่วน", text="เช็คสิทธิ์เคลมด่วน"))]
+            )
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[
+                        TextMessage(
+                            text="👋 สวัสดีค่ะ!\n\nต้องการตรวจสอบสิทธิ์การเคลมประกัน กดปุ่มด้านล่างได้เลยค่ะ",
+                            quick_reply=quick_reply,
+                        )
+                    ],
+                )
+            )
 
         except Exception as e:
             logger.exception("Error in handle_text_message user_id=%s", user_id)
@@ -224,7 +273,7 @@ def handle_text_message(event):
 
 @handler.add(MessageEvent, message=ImageMessageContent)
 def handle_image_message(event):
-    """จัดการรูปภาพ"""
+    """จัดการรูปภาพ — delegates to v2 handler modules."""
     user_id = event.source.user_id
     session = get_session(user_id)
     current_state = session.get("state")
@@ -243,61 +292,49 @@ def handle_image_message(event):
                 response.raise_for_status()
                 image_bytes = response.content
 
-            # Case 1: OCR เพื่อหาข้อมูลกรมธรรม์
-            if current_state == "waiting_for_info":
+            # ── Policy verification by image (OCR) ─────────────────────
+            if current_state == "verifying_policy":
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(text="⏳ กำลังค้นหาข้อมูลจากรูปภาพ...")]
+                        messages=[TextMessage(text="⏳ กำลังอ่านข้อมูลจากรูปภาพ... / Reading image...")],
                     )
                 )
-                info = extract_info_from_image_with_gemini(gemini_model, image_bytes)
-                policies = []
-                if info["type"] == "id_card" and info["value"]:
-                    policies = search_policies_by_cid(info["value"])
-                elif info["type"] == "license_plate" and info["value"]:
-                    policy = search_policies_by_plate(info["value"])
-                    policies = [policy] if policy else []
+                handle_policy_image(line_bot_api, user_id, user_sessions, image_bytes)
+                return
 
-                process_search_result(line_bot_api, event, user_id, policies, use_push=True)
+            # ── Phase 1: Damage photo upload (CD) ──────────────────────
+            if current_state == "uploading_damage_photos":
+                handle_damage_photo_image(line_bot_api, user_id, user_sessions, image_bytes)
+                return
 
-            # Case 2: รูปความเสียหาย
-            elif current_state == "waiting_for_image":
-                set_state(user_id, "waiting_for_additional_info",
-                          temp_image_bytes=image_bytes,
-                          policy_info=session.get("policy_info"),
-                          has_counterpart=session.get("has_counterpart"))
+            # ── Phase 2: Confirming claim — accept extra damage photos ──
+            if current_state == "confirming_claim":
+                # Allow sending more damage photos even during confirmation
+                handle_damage_photo_image(line_bot_api, user_id, user_sessions, image_bytes)
+                return
 
-                flex_prompt = create_additional_info_prompt_flex()
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[
-                            TextMessage(text="✅ ได้รับรูปภาพความเสียหายแล้วค่ะ"),
-                            FlexMessage(alt_text="ขอข้อมูลเพิ่มเติม", contents=flex_prompt)
-                        ]
-                    )
+            # ── Phase 3: Identity doc upload (CD) ──────────────────────
+            if current_state == "uploading_identity_docs":
+                handle_identity_doc_image(line_bot_api, event, user_id, user_sessions, image_bytes)
+                return
+
+            # ── Document upload — Health claims (single phase) ─────────
+            if current_state in ("uploading_documents", "waiting_for_claim_documents"):
+                handle_document_image(line_bot_api, event, user_id, user_sessions, image_bytes)
+                return
+
+            # ── Unexpected image ────────────────────────────────────────
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[
+                        TextMessage(
+                            text="📸 ได้รับรูปภาพแล้วค่ะ แต่ตอนนี้ยังไม่ถึงขั้นตอนส่งรูปนะคะ\n\nพิมพ์ 'เช็คสิทธิ์เคลมด่วน' เพื่อเริ่มใหม่ค่ะ / Not expecting an image now. Type a claim keyword to start."
+                        )
+                    ],
                 )
-
-            # Case 3: รับเอกสารส่งเคลม (หลายไฟล์)
-            elif current_state == "waiting_for_claim_documents":
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[
-                            TextMessage(text="✅ ได้รับเอกสารเรียบร้อยค่ะ!"),
-                            TextMessage(text="หากมีเอกสารหรือรูปถ่ายอื่นเพิ่มเติม สามารถส่งมาต่อได้ทันทีค่ะ หรือพิมพ์ 'เสร็จสิ้น' เมื่อส่งครบแล้ว")
-                        ]
-                    )
-                )
-
-            else:
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text="📸 ได้รับรูปภาพแล้วค่ะ แต่ตอนนี้ยังไม่ถึงขั้นตอนส่งรูปนะคะ\n\nพิมพ์ 'เช็คสิทธิ์เคลมด่วน' เพื่อเริ่มใหม่ค่ะ")]
-                    )
-                )
+            )
 
         except Exception as e:
             logger.exception("Error in handle_image_message user_id=%s", user_id)
@@ -340,14 +377,15 @@ async def webhook(request: Request):
 
 @app.get("/health")
 async def health_check():
+    from constants import AZURE_OPENAI_API_KEY
     line_ok = bool(LINE_CHANNEL_ACCESS_TOKEN and LINE_CHANNEL_SECRET)
-    gemini_ok = bool(GEMINI_API_KEY)
-    checks = {"line_api": line_ok, "gemini_api": gemini_ok}
-    status = "healthy" if (line_ok and gemini_ok) else "degraded"
+    ai_ok = bool(AZURE_OPENAI_API_KEY)
+    checks = {"line_api": line_ok, "azure_openai": ai_ok}
+    status = "healthy" if (line_ok and ai_ok) else "degraded"
     return JSONResponse({
         "status": status,
         "line_configured": line_ok,
-        "gemini_configured": gemini_ok,
+        "ai_configured": ai_ok,
         "checks": checks,
     })
 

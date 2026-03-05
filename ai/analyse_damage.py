@@ -1,24 +1,19 @@
 """
-ai/analyse_damage.py — Eligibility verdict + damage analysis using Gemini.
+ai/analyse_damage.py — Eligibility verdict + damage analysis using Azure OpenAI.
 
-Sends: damage photo image + policy PDF document.
+Sends: damage photo image + policy info as structured text.
 Returns: Thai/English bilingual analysis result string.
 
 Every response ends with the mandatory AI disclaimer (FR-08.4).
 """
 
 import logging
-import os
-import tempfile
-import time
+import io
 from typing import Dict, Optional
 
-import google.generativeai as genai
 from PIL import Image
-import io
 
-from ai import call_gemini, get_model
-from constants import GEMINI_MODEL
+from ai import call_ai
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +42,7 @@ def _build_prompt(policy_info: Dict, additional_info: Optional[str], has_counter
     coverage = policy_info.get("coverage_type") or policy_info.get("insurance_type", "")
     deductible = policy_info.get("deductible", "N/A")
     insurer = policy_info.get("insurance_company", "")
+    phone = policy_info.get("phone", "N/A")
 
     counterpart_note = ""
     if has_counterpart == "มีคู่กรณี":
@@ -72,20 +68,21 @@ Customer information:
 - Insurer: {insurer}
 - Coverage class: {coverage}
 - Deductible (Excess / ค่าเสียหายส่วนแรก): {deductible} THB
+- Claims hotline: {phone}
 
 {counterpart_note}
 {additional_note}
 
-Analyse image 1 (damage photo) against image 2 (policy document PDF).
+Analyse the damage photo provided.
 
 Reply in BOTH Thai AND English. Structure your reply exactly as follows:
 
 สวัสดีครับ คุณ{first}: ผลการเช็คสิทธิ์เคลมด่วน / Quick Claim Eligibility Result for {first}
 
-📄 ข้อมูลกรมธรรม์จากเอกสาร / Policy Details
-• ประเภท / Class: [from document]
-• ค่าเสียหายส่วนแรก / Deductible: [amount] บาท
-• เบอร์แจ้งเหตุ / Claims hotline: [number from document]
+📄 ข้อมูลกรมธรรม์ / Policy Details
+• ประเภท / Class: {coverage}
+• ค่าเสียหายส่วนแรก / Deductible: {deductible} บาท
+• เบอร์แจ้งเหตุ / Claims hotline: {phone}
 
 🔍 วิเคราะห์ความเสียหาย / Damage Analysis
 • ตำแหน่งที่เสียหาย / Damage location: [location]
@@ -104,7 +101,7 @@ Reply in BOTH Thai AND English. Structure your reply exactly as follows:
 • ประกันรับผิดชอบ / Insurer covers: [amount] บาท
 
 📋 3 ขั้นตอนถัดไป / Next Steps
-1. แจ้งเหตุทันที / Report immediately: โทร [hotline number]
+1. แจ้งเหตุทันที / Report immediately: โทร {phone}
 2. นัดตรวจ / Schedule inspection
 3. นำรถเข้าซ่อม / Proceed to repair
 """
@@ -116,7 +113,7 @@ def analyse_damage(
     additional_info: Optional[str] = None,
     has_counterpart: Optional[str] = None,
 ) -> str:
-    """Run damage analysis + eligibility verdict.
+    """Run damage analysis + eligibility verdict using Azure OpenAI.
 
     Args:
         image_bytes:     Raw bytes of the damage photo.
@@ -127,44 +124,11 @@ def analyse_damage(
     Returns:
         Bilingual analysis result string ending with AI disclaimer.
     """
-    has_policy_doc = bool(policy_info.get("policy_document_base64"))
-    if not has_policy_doc:
-        logger.warning("No policy document found for analysis")
-        return (
-            "❌ ไม่พบเอกสารกรมธรรม์ / Policy document not found.\n"
-            "กรุณาติดต่อเจ้าหน้าที่ / Please contact our staff."
-            + _DISCLAIMER
-        )
-
-    import base64
     prompt = _build_prompt(policy_info, additional_info, has_counterpart)
-    damage_img = Image.open(io.BytesIO(image_bytes))
-    policy_pdf_bytes = base64.b64decode(policy_info["policy_document_base64"])
 
-    uploaded = None
-    tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(policy_pdf_bytes)
-            tmp_path = tmp.name
-
-        uploaded = genai.upload_file(tmp_path, mime_type="application/pdf")
-        logger.info("Uploaded policy PDF to Gemini: %s", uploaded.name)
-        time.sleep(2)  # allow Gemini to process the file
-
-        model = get_model()
-        response = model.generate_content([prompt, damage_img, uploaded])
-        result = response.text
-
-        # Record tokens manually since we bypass call_gemini()
-        try:
-            from ai import _append_token_record
-            in_tok  = response.usage_metadata.prompt_token_count or 0
-            out_tok = response.usage_metadata.candidates_token_count or 0
-            _append_token_record("analyse_damage", in_tok, out_tok)
-        except Exception:  # noqa: BLE001
-            pass
-
+        damage_img = Image.open(io.BytesIO(image_bytes))
+        result = call_ai("analyse_damage", prompt, damage_img)
         logger.info("Damage analysis complete")
         return result + _DISCLAIMER
 
@@ -174,12 +138,3 @@ def analyse_damage(
             f"❌ เกิดข้อผิดพลาดในการวิเคราะห์ / Analysis error: {exc}\n"
             "กรุณาลองใหม่อีกครั้ง / Please try again." + _DISCLAIMER
         )
-    finally:
-        if uploaded:
-            try:
-                genai.delete_file(uploaded.name)
-                logger.debug("Deleted Gemini file %s", uploaded.name)
-            except Exception:  # noqa: BLE001
-                pass
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)

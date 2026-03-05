@@ -1,8 +1,8 @@
 # User Journey
 ## LINE Insurance Claims Bot — "เช็คสิทธิ์ & เคลมประกันด่วน"
 
-**Version:** 2.1  
-**Date:** February 2026
+**Version:** 2.2  
+**Date:** March 2026
 
 This document shows the step-by-step journeys for all four user roles in the system.
 
@@ -87,6 +87,8 @@ flowchart TD
 
 ### Step-by-Step Flow
 
+The CD claim uses a **phased document upload** approach. Damage photos are collected first, the customer confirms to start the claim process, then identity documents and vehicle registration are uploaded.
+
 ```mermaid
 flowchart TD
     Start([Customer has a car accident\nor potential damage])
@@ -94,7 +96,7 @@ flowchart TD
     T1[Customer opens LINE\nand types their situation or trigger keyword\ne.g. รถผมชนครับ / เช็คสิทธิ์เคลมด่วน]
     T2{Bot detects\nclaim type}
     T3[Bot cannot detect — shows\nclaim-type selector card\nCD or H button]
-    T4[Bot confirms: Car Damage claim\nShows Claim ID card\ne.g. CD-20260226-000001\nstatus = Draft]
+    T4[Bot confirms: Car Damage claim\nShows Claim ID card\ne.g. CD-20260305-000001\nstatus = Draft]
 
     V1[Bot asks for identity\nType CID / plate / name\nor send photo of ID card / driving license]
     V2{Image or text?}
@@ -109,26 +111,43 @@ flowchart TD
 
     Q1[Bot asks:\nมีคู่กรณีหรือไม่?\nDid another vehicle cause this?]
     Q2{Customer answers}
-    Q3[Recorded: Has counterpart ✅\nsession state = uploading_documents]
-    Q4[Recorded: No counterpart ❌\nsession state = uploading_documents]
+    Q3[Recorded: Has counterpart ✅]
+    Q4[Recorded: No counterpart ❌]
 
-    D1[Bot shows document checklist:\nRequired + optional docs]
-    D2[Customer sends photo]
-    D3[AI categorises photo]
-    D4{Recognised?}
-    D5[Bot rejects: Unknown document\nPlease send one of the listed types]
-    D6[AI extracts data fields\nfrom the photo]
-    D7{Is this a\ndriving license?}
-    D8[Bot asks:\nIs this YOUR license or the OTHER PARTY's?\nButtons: ของฉัน / คู่กรณี\nsession state = awaiting_ownership]
-    D9{Already uploaded\nfor this side?}
-    D10[Bot rejects: Already have\na license for this side]
-    D11[Bot confirms doc received\nShows extracted data\nUpdates missing doc list\nsession state = uploading_documents]
-    D12{All required\ndocs uploaded?}
+    %% ── Phase 1: Damage Photos ──
+    P1_1["📸 Phase 1 — Damage Photos\nBot asks for car damage photos\nsession state = uploading_damage_photos"]
+    P1_2[Customer sends damage photo]
+    P1_3[AI categorises photo]
+    P1_4{Recognised as\ndamage/location photo?}
+    P1_5[Bot rejects: Please send\na car damage photo first]
+    P1_6[AI extracts damage data\nGPS from EXIF if available]
+    P1_7[Bot confirms photo received\nShows damage description + severity]
+    P1_8{At least 1 damage\nphoto uploaded?}
 
-    SUB1[Bot shows Submit prompt\nsession state = ready_to_submit]
+    %% ── Phase 2: Confirm Claim ──
+    P2_1["✅ Phase 2 — Confirm Claim\nBot shows confirmation prompt:\nยืนยันเริ่มกระบวนการเคลม?\nConfirm to start claim process?\nsession state = confirming_claim"]
+    P2_2{Customer confirms?}
+    P2_3[Customer taps ยืนยัน / Confirm]
+
+    %% ── Phase 3: Identity Docs + Registration ──
+    P3_1["📄 Phase 3 — Identity Docs\nBot asks for:\n1. ใบขับขี่ Driving License\n2. สมุดเล่มทะเบียนรถ Vehicle Registration Book\nsession state = uploading_identity_docs"]
+    P3_2[Customer sends photo]
+    P3_3[AI categorises photo]
+    P3_4{Recognised?}
+    P3_5[Bot rejects: Unknown document\nPlease send driving license\nor vehicle registration book]
+    P3_6[AI extracts data fields\nfrom the photo]
+    P3_7{Is this a\ndriving license?}
+    P3_8[Bot asks:\nIs this YOUR license or the OTHER PARTY's?\nButtons: ของฉัน / คู่กรณี\nsession state = awaiting_ownership]
+    P3_9{Already uploaded\nfor this side?}
+    P3_10[Bot rejects: Already have\na license for this side]
+    P3_11[Bot confirms doc received\nShows extracted data\nUpdates missing doc list\nsession state = uploading_identity_docs]
+    P3_12{All identity docs\n+ registration uploaded?}
+
+    %% ── Phase 4: Submit ──
+    SUB1[Bot shows Submit prompt:\nกรุณายืนยันส่งข้อมูลเคลม\nsession state = ready_to_submit]
     SUB2[Customer confirms submit]
     SUB3[System validates completeness\nSets status = Submitted\nGenerates summary.md]
-    SUB4[Bot shows Claim ID\nCD-20260226-000001\nKeep this to track your claim\nsession state = submitted]
+    SUB4[Bot shows Claim ID\nCD-20260305-000001\nKeep this to track your claim\nsession state = submitted]
 
     Start --> T1
     T1 --> T2
@@ -154,45 +173,64 @@ flowchart TD
     Q1 --> Q2
     Q2 -->|มีคู่กรณี| Q3
     Q2 -->|ไม่มีคู่กรณี| Q4
-    Q3 --> D1
-    Q4 --> D1
+    Q3 --> P1_1
+    Q4 --> P1_1
 
-    D1 --> D2
-    D2 --> D3
-    D3 --> D4
-    D4 -->|No| D5
-    D5 --> D2
-    D4 -->|Yes| D6
-    D6 --> D7
-    D7 -->|Yes, with-counterpart claim| D8
-    D8 --> D9
-    D9 -->|Already exists| D10
-    D10 --> D2
-    D9 -->|New side| D11
-    D7 -->|No — other doc type| D11
-    D11 --> D12
-    D12 -->|Still missing| D2
-    D12 -->|All done| SUB1
+    P1_1 --> P1_2
+    P1_2 --> P1_3
+    P1_3 --> P1_4
+    P1_4 -->|No| P1_5
+    P1_5 --> P1_2
+    P1_4 -->|Yes| P1_6
+    P1_6 --> P1_7
+    P1_7 --> P1_8
+    P1_8 -->|No, send more| P1_2
+    P1_8 -->|Yes, at least 1| P2_1
+
+    P2_1 --> P2_2
+    P2_2 -->|ยืนยัน / Confirm| P2_3
+    P2_3 --> P3_1
+
+    P3_1 --> P3_2
+    P3_2 --> P3_3
+    P3_3 --> P3_4
+    P3_4 -->|No| P3_5
+    P3_5 --> P3_2
+    P3_4 -->|Yes| P3_6
+    P3_6 --> P3_7
+    P3_7 -->|Yes, with-counterpart claim| P3_8
+    P3_8 --> P3_9
+    P3_9 -->|Already exists| P3_10
+    P3_10 --> P3_2
+    P3_9 -->|New side| P3_11
+    P3_7 -->|No — other doc type| P3_11
+    P3_11 --> P3_12
+    P3_12 -->|Still missing| P3_2
+    P3_12 -->|All done| SUB1
     SUB1 --> SUB2
     SUB2 --> SUB3
     SUB3 --> SUB4
 
     style Start fill:#1a4a1a,color:#fff
     style SUB4 fill:#1a4a1a,color:#fff
-    style D5 fill:#4a1a1a,color:#fff
-    style D10 fill:#4a1a1a,color:#fff
+    style P1_5 fill:#4a1a1a,color:#fff
+    style P3_5 fill:#4a1a1a,color:#fff
+    style P3_10 fill:#4a1a1a,color:#fff
     style V9 fill:#4a1a1a,color:#fff
+    style P1_1 fill:#1a2a4a,color:#fff
+    style P2_1 fill:#2a4a1a,color:#fff
+    style P3_1 fill:#1a2a4a,color:#fff
 ```
 
 ### Car Damage — Required Documents Checklist
 
-| # | Document | Owner Confirmation? | Key Extracted Fields |
-|:---:|---|:---:|---|
-| 1 | **Driving License** (customer's) | ✅ "ของฉัน" | Name, license ID, citizen ID, DOB, expiry |
-| 2 | **Driving License** (other party) — *with-counterpart only* | ✅ "คู่กรณี" | Name, license ID, citizen ID, DOB, expiry |
-| 3 | **Vehicle Registration** | — | Plate, brand, chassis number, engine number, model year |
-| 4 | **Vehicle Damage Photo** (≥1; stored as `vehicle_damage_photo_1`, `_2`, …) | — | Damage location, description, severity, GPS (EXIF) |
-| 5 | Vehicle Location Photo *(optional)* | — | Location desc, road conditions, weather, GPS |
+| # | Phase | Document | Owner Confirmation? | Key Extracted Fields |
+|:---:|:---:|---|:---:|---|
+| 1 | **Phase 1** | **Vehicle Damage Photo** (≥1; stored as `vehicle_damage_photo_1`, `_2`, …) | — | Damage location, description, severity, GPS (EXIF) |
+| 2 | **Phase 1** | Vehicle Location Photo *(optional)* | — | Location desc, road conditions, weather, GPS |
+| 3 | **Phase 3** | **Driving License** (customer's / ใบขับขี่ผู้เอาประกัน) | ✅ "ของฉัน" | Name, license ID, citizen ID, DOB, expiry |
+| 4 | **Phase 3** | **Driving License** (other party / ใบขับขี่คู่กรณี) — *with-counterpart only* | ✅ "คู่กรณี" | Name, license ID, citizen ID, DOB, expiry |
+| 5 | **Phase 3** | **สมุดเล่มทะเบียนรถ / Vehicle Registration Book** | — | Plate, brand, chassis number, engine number, model year |
 
 ---
 
@@ -289,7 +327,7 @@ flowchart TD
 
 ## 4. Document Upload & AI Extraction Loop (Shared)
 
-This diagram shows what happens inside the system every time the customer sends a photo in `uploading_documents` state.
+This diagram shows what happens inside the system every time the customer sends a photo in any document upload state (`uploading_damage_photos`, `uploading_identity_docs` for CD; `uploading_documents` for H).
 
 ```mermaid
 sequenceDiagram
@@ -473,12 +511,16 @@ flowchart TD
 | 4 | **Policy Details Card** | ID verified (CD) | Shows coverage type, amount, deductible, vehicle info |
 | 5 | **Health Policy Details Card** | ID verified (H) | Shows plan name, IPD/OPD coverage, room allowance |
 | 6 | **Counterpart Question** (CD only) | Policy shown | Quick-reply buttons: มีคู่กรณี / ไม่มีคู่กรณี |
-| 7 | **Document Checklist** | Counterpart answered (CD) or Policy shown (H) | Full list of required and optional documents |
-| 8 | **Upload Acknowledgement** | Each photo received | Confirms document category; shows extracted data fields |
-| 9 | **Ownership Confirmation** (CD, driving license, with-counterpart) | Driving license detected | Quick-reply: ของฉัน (ฝ่ายเรา) / คู่กรณี (อีกฝ่าย) |
-| 10 | **Progress Update** | After each upload | Shows remaining required documents |
-| 11 | **Submit Prompt** | All docs complete | Submit button; shows total doc count and Claim ID |
-| 12 | **Submission Confirmed** | Submit successful | Shows Claim ID; instructions to contact for status updates |
+| 7 | **📸 Damage Photo Request** (CD, Phase 1) | Counterpart answered | Bot asks customer to send car damage photos first |
+| 8 | **Damage Photo Acknowledgement** (CD, Phase 1) | Damage/location photo received | Confirms damage photo received; shows damage description, severity, GPS |
+| 9 | **✅ Claim Confirmation Prompt** (CD, Phase 2) | ≥1 damage photo uploaded | Bot shows: "ยืนยันเริ่มกระบวนการเคลม? / Confirm to start claim process?" with ยืนยัน button |
+| 10 | **📄 Identity Doc Request** (CD, Phase 3) | Customer confirms claim | Bot asks for: ใบขับขี่ (driving license) + สมุดเล่มทะเบียนรถ (vehicle registration book) |
+| 11 | **Document Checklist** (H) | Policy shown (H) | Full list of required and optional documents |
+| 12 | **Upload Acknowledgement** | Each identity doc / H doc received | Confirms document category; shows extracted data fields |
+| 13 | **Ownership Confirmation** (CD, driving license, with-counterpart) | Driving license detected | Quick-reply: ของฉัน (ฝ่ายเรา) / คู่กรณี (อีกฝ่าย) |
+| 14 | **Progress Update** | After each upload | Shows remaining required documents |
+| 15 | **Submit Prompt** | All docs complete | Submit button; shows total doc count and Claim ID |
+| 16 | **Submission Confirmed** | Submit successful | Shows Claim ID; instructions to contact for status updates |
 
 ### Reviewer Screens (Web `/reviewer`)
 
@@ -517,16 +559,24 @@ stateDiagram-v2
     verifying_policy --> verifying_policy : Not found / expired — retry
     waiting_for_vehicle_selection --> verifying_policy : Customer selects plate
     verifying_policy --> waiting_for_vehicle_selection : Multiple policies found\nShow selection carousel
-    waiting_for_counterpart --> uploading_documents : มีคู่กรณี or ไม่มีคู่กรณี answered
-    uploading_documents --> uploading_documents : Doc uploaded, more needed
-    uploading_documents --> awaiting_ownership : Driving license uploaded\nwith-counterpart CD claim
-    awaiting_ownership --> uploading_documents : Ownership confirmed (ของฉัน / คู่กรณี)
-    uploading_documents --> ready_to_submit : All required docs received
+    waiting_for_counterpart --> uploading_damage_photos : มีคู่กรณี or ไม่มีคู่กรณี answered
+    uploading_damage_photos --> uploading_damage_photos : Damage/location photo uploaded, can send more
+    uploading_damage_photos --> confirming_claim : At least 1 damage photo received\nBot shows confirmation prompt
+    confirming_claim --> uploading_identity_docs : Customer confirms ยืนยัน\nBot asks for driving license + สมุดเล่มทะเบียนรถ
+    uploading_identity_docs --> uploading_identity_docs : Doc uploaded, more needed
+    uploading_identity_docs --> awaiting_ownership : Driving license uploaded\nwith-counterpart CD claim
+    awaiting_ownership --> uploading_identity_docs : Ownership confirmed (ของฉัน / คู่กรณี)
+    uploading_identity_docs --> ready_to_submit : All identity docs + registration received
+    uploading_documents --> uploading_documents : Doc uploaded, more needed (H)
+    uploading_documents --> ready_to_submit : All required docs received (H)
     ready_to_submit --> submitted : Customer submits\nstatus = Submitted\nsummary.md generated
     submitted --> [*]
     idle --> idle : Cancel keywords reset session
     detecting_claim_type --> idle : Cancel keywords
     verifying_policy --> idle : Cancel keywords
+    uploading_damage_photos --> idle : Cancel keywords
+    confirming_claim --> idle : Cancel keywords
+    uploading_identity_docs --> idle : Cancel keywords
     uploading_documents --> idle : Cancel keywords
 ```
 
@@ -538,9 +588,12 @@ stateDiagram-v2
 | `detecting_claim_type` | Evaluating keywords; may show selector | Pick CD or H → `verifying_policy` |
 | `verifying_policy` | Awaiting CID / plate / name / ID photo | Valid policy → counterpart Q (CD) or docs (H) |
 | `waiting_for_vehicle_selection` | Multiple policies found; customer picks plate | Plate selected → `verifying_policy` |
-| `waiting_for_counterpart` | CD only: asking มีคู่กรณี / ไม่มีคู่กรณี | Answer → `uploading_documents` |
-| `uploading_documents` | Document upload loop; AI categorise + extract | Upload done → `ready_to_submit` or license → `awaiting_ownership` |
-| `awaiting_ownership` | Driving license received; asking ของฉัน / คู่กรณี | Confirm → `uploading_documents` |
+| `waiting_for_counterpart` | CD only: asking มีคู่กรณี / ไม่มีคู่กรณี | Answer → `uploading_damage_photos` |
+| `uploading_damage_photos` | **CD only, Phase 1:** Accepting car damage and location photos | ≥1 damage photo → `confirming_claim` |
+| `confirming_claim` | **CD only, Phase 2:** Confirmation prompt shown; awaiting ยืนยัน | Confirm → `uploading_identity_docs` |
+| `uploading_identity_docs` | **CD only, Phase 3:** Accepting driving license(s) + สมุดเล่มทะเบียนรถ | All done → `ready_to_submit`; license → `awaiting_ownership` |
+| `uploading_documents` | **H only:** Document upload loop; AI categorise + extract | Upload done → `ready_to_submit` |
+| `awaiting_ownership` | Driving license received; asking ของฉัน / คู่กรณี | Confirm → `uploading_identity_docs` |
 | `ready_to_submit` | All required docs received; Submit button shown | Submit → `submitted` |
 | `submitted` | Claim submitted; Claim ID shown | Session ends (or restart) |
 

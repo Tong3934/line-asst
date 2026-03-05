@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local Chat Tester — Insurance Bot</title>
+  <style>
+    /* ───── Reset & Base ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      background: #e5ddd5;
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      overflow: hidden;
+      font-size: 14px;
+    }
+
+    /* ───── Top Bar ──────────────────────────────────────────── */
+    #topbar {
+      background: #075e54;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      flex-shrink: 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,.4);
+      z-index: 10;
+    }
+    #topbar .avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: #25d366;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; flex-shrink: 0;
+    }
+    #topbar .info { flex: 1; }
+    #topbar .info .name { font-weight: 600; font-size: 15px; }
+    #topbar .info .sub { font-size: 11px; opacity: .75; margin-top: 1px; }
+    #topbar .actions { display: flex; gap: 8px; }
+    #topbar .actions button {
+      background: rgba(255,255,255,.18);
+      border: none; color: #fff; cursor: pointer;
+      border-radius: 6px; padding: 5px 10px; font-size: 12px;
+      transition: background .2s;
+    }
+    #topbar .actions button:hover { background: rgba(255,255,255,.32); }
+
+    /* ───── Session Badge ────────────────────────────────────── */
+    #session-bar {
+      background: #f0f8ff;
+      border-bottom: 1px solid #d0e6f5;
+      padding: 4px 16px;
+      font-size: 11px;
+      color: #555;
+      display: flex; align-items: center; gap: 8px;
+      flex-shrink: 0;
+    }
+    #session-bar .lbl { font-weight: 600; color: #075e54; }
+    #state-badge {
+      background: #d1ecf1; color: #0c5460;
+      border-radius: 10px; padding: 2px 8px; font-weight: 600;
+    }
+    #uid-input {
+      border: 1px solid #ccc; border-radius: 4px;
+      padding: 2px 6px; font-size: 11px; width: 140px;
+      outline: none;
+    }
+    #uid-input:focus { border-color: #075e54; }
+
+    /* ───── Chat Area ────────────────────────────────────────── */
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 10px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      scroll-behavior: smooth;
+    }
+
+    /* ───── Message Rows ─────────────────────────────────────── */
+    .row {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      max-width: 82%;
+    }
+    .row.user { align-self: flex-end; flex-direction: row-reverse; }
+    .row.bot  { align-self: flex-start; }
+
+    .avatar-sm {
+      width: 30px; height: 30px; border-radius: 50%;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px;
+    }
+    .row.bot  .avatar-sm { background: #25d366; }
+    .row.user .avatar-sm { background: #128c7e; }
+
+    /* Bubble */
+    .bubble {
+      border-radius: 8px;
+      padding: 8px 11px;
+      line-height: 1.5;
+      word-break: break-word;
+      white-space: pre-wrap;
+      position: relative;
+      max-width: 100%;
+      box-shadow: 0 1px 1px rgba(0,0,0,.12);
+    }
+    .row.user  .bubble { background: #dcf8c6; border-bottom-right-radius: 2px; }
+    .row.bot   .bubble { background: #fff;    border-bottom-left-radius:  2px; }
+
+    .bubble .ts {
+      font-size: 10px;
+      color: #aaa;
+      margin-top: 3px;
+      text-align: right;
+    }
+
+    /* Image inside bubble */
+    .bubble img.msg-img {
+      max-width: 220px; max-height: 220px;
+      border-radius: 6px; display: block;
+      cursor: pointer;
+    }
+
+    /* ───── Flex Card ────────────────────────────────────────── */
+    .flex-card {
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,.15);
+      min-width: 240px;
+      max-width: 300px;
+    }
+    .flex-card .fc-hero {
+      background: #0066FF;
+      color: #fff;
+      padding: 14px 16px;
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .flex-card .fc-body {
+      padding: 12px 14px;
+      font-size: 13px;
+      color: #333;
+      line-height: 1.6;
+    }
+    .flex-card .fc-footer {
+      border-top: 1px solid #eee;
+      display: flex; flex-wrap: wrap; gap: 1px;
+    }
+    .flex-card .fc-footer button {
+      flex: 1;
+      padding: 10px 8px;
+      border: none; background: #f5f5f5;
+      cursor: pointer; font-size: 13px; color: #0066FF;
+      font-weight: 600; transition: background .15s;
+    }
+    .flex-card .fc-footer button:hover { background: #e8f0fe; }
+    .flex-card .fc-row {
+      display: flex; justify-content: space-between;
+      padding: 2px 0; font-size: 12px;
+    }
+    .flex-card .fc-row .lk { color: #888; }
+    .flex-card .fc-row .vl { color: #111; font-weight: 600; text-align: right; }
+    .flex-card .fc-sep { border: none; border-top: 1px solid #eee; margin: 6px 0; }
+
+    /* ───── Quick Replies ────────────────────────────────────── */
+    .qr-wrap {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      padding: 4px 0 4px 36px;
+      align-self: flex-start;
+    }
+    .qr-btn {
+      background: #fff;
+      border: 1.5px solid #25d366;
+      color: #075e54;
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .qr-btn:hover { background: #25d366; color: #fff; }
+
+    /* ───── Typing indicator ─────────────────────────────────── */
+    #typing {
+      display: none;
+      align-self: flex-start;
+      margin-left: 36px;
+      background: #fff;
+      border-radius: 18px;
+      padding: 8px 14px;
+      box-shadow: 0 1px 1px rgba(0,0,0,.1);
+    }
+    #typing span {
+      display: inline-block;
+      width: 8px; height: 8px;
+      background: #aaa;
+      border-radius: 50%;
+      margin: 0 2px;
+      animation: bounce 1.1s infinite;
+    }
+    #typing span:nth-child(2) { animation-delay: .18s; }
+    #typing span:nth-child(3) { animation-delay: .36s; }
+    @keyframes bounce {
+      0%,60%,100% { transform: translateY(0); }
+      30%          { transform: translateY(-6px); }
+    }
+
+    /* ───── System message ───────────────────────────────────── */
+    .sys-msg {
+      text-align: center;
+      font-size: 11px;
+      color: #888;
+      background: rgba(255,255,255,.6);
+      border-radius: 12px;
+      padding: 3px 12px;
+      align-self: center;
+    }
+
+    /* ───── Input Bar ────────────────────────────────────────── */
+    #inputbar {
+      background: #f0f0f0;
+      border-top: 1px solid #ddd;
+      padding: 8px 10px;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    #msg-input {
+      flex: 1;
+      border: none;
+      border-radius: 22px;
+      padding: 9px 14px;
+      font-size: 14px;
+      outline: none;
+      resize: none;
+      max-height: 100px;
+      overflow-y: auto;
+      line-height: 1.4;
+      background: #fff;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,.1);
+    }
+    .bar-btn {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+      transition: background .15s;
+    }
+    #img-btn  { background: #128c7e; color: #fff; }
+    #img-btn:hover  { background: #075e54; }
+    #send-btn { background: #25d366; color: #fff; }
+    #send-btn:hover { background: #1da851; }
+    #send-btn:disabled { background: #ccc; cursor: default; }
+
+    #file-input { display: none; }
+
+    /* ───── Lightbox ─────────────────────────────────────────── */
+    #lightbox {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.85);
+      z-index: 999;
+      align-items: center; justify-content: center;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 6px; }
+    #lightbox-close {
+      position: fixed; top: 14px; right: 18px;
+      color: #fff; font-size: 28px; cursor: pointer; line-height: 1;
+      background: none; border: none;
+    }
+
+    /* ───── Scrollbar ────────────────────────────────────────── */
+    #chat::-webkit-scrollbar { width: 4px; }
+    #chat::-webkit-scrollbar-thumb { background: rgba(0,0,0,.2); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Top Bar ─────────────────────────────────────────────── -->
+<div id="topbar">
+  <div class="avatar">🤖</div>
+  <div class="info">
+    <div class="name">Insurance Claim Bot</div>
+    <div class="sub">Local Test Mode</div>
+  </div>
+  <div class="actions">
+    <button onclick="refreshSession()">🔄 Refresh State</button>
+    <button onclick="resetSession()" style="background:rgba(255,80,80,.35)">🗑 Reset</button>
+  </div>
+</div>
+
+<!-- ── Session Bar ──────────────────────────────────────────── -->
+<div id="session-bar">
+  <span class="lbl">User ID:</span>
+  <input id="uid-input" value="local_test_user" placeholder="user id" />
+  <span class="lbl">State:</span>
+  <span id="state-badge">idle</span>
+</div>
+
+<!-- ── Chat ────────────────────────────────────────────────── -->
+<div id="chat">
+  <div class="sys-msg">🔒 Local Test — messages stay in-browser only</div>
+</div>
+<div id="typing">
+  <span></span><span></span><span></span>
+</div>
+
+<!-- ── Input Bar ───────────────────────────────────────────── -->
+<div id="inputbar">
+  <button class="bar-btn" id="img-btn" title="Send image" onclick="document.getElementById('file-input').click()">📎</button>
+  <input type="file" id="file-input" accept="image/*" onchange="handleFileSelect(event)" />
+  <textarea id="msg-input" rows="1" placeholder="พิมพ์ข้อความ..." oninput="autoResize(this)" onkeydown="onKey(event)"></textarea>
+  <button class="bar-btn" id="send-btn" title="Send" onclick="sendText()">➤</button>
+</div>
+
+<!-- ── Lightbox ────────────────────────────────────────────── -->
+<div id="lightbox">
+  <button id="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightbox-img" src="" alt="preview" />
+</div>
+
+<script>
+  // ─── Helpers ─────────────────────────────────────────────────
+  const chat    = document.getElementById('chat');
+  const typing  = document.getElementById('typing');
+  const msgInput = document.getElementById('msg-input');
+
+  function userId() { return document.getElementById('uid-input').value.trim() || 'local_test_user'; }
+
+  function now() {
+    const d = new Date();
+    return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+  }
+
+  function scrollBottom() {
+    setTimeout(() => chat.scrollTop = chat.scrollHeight, 50);
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+  }
+
+  function onKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+  }
+
+  // ─── Session ──────────────────────────────────────────────────
+  async function refreshSession() {
+    const res = await fetch(`/local-chat/session?user_id=${encodeURIComponent(userId())}`);
+    const data = await res.json();
+    document.getElementById('state-badge').textContent = data.session?.state ?? 'idle';
+  }
+
+  async function resetSession() {
+    if (!confirm('Reset session?')) return;
+    const fd = new FormData();
+    fd.append('user_id', userId());
+    await fetch('/local-chat/reset', { method: 'POST', body: fd });
+    appendSystem('🔄 Session reset');
+    refreshSession();
+  }
+
+  // ─── Append messages ─────────────────────────────────────────
+  function appendSystem(text) {
+    const d = document.createElement('div');
+    d.className = 'sys-msg';
+    d.textContent = text;
+    chat.appendChild(d);
+    scrollBottom();
+  }
+
+  function appendUserText(text) {
+    const row = document.createElement('div');
+    row.className = 'row user';
+    row.innerHTML = `
+      <div class="avatar-sm">👤</div>
+      <div class="bubble">${escHtml(text)}<div class="ts">${now()}</div></div>`;
+    chat.appendChild(row);
+    scrollBottom();
+  }
+
+  function appendUserImage(dataUrl) {
+    const row = document.createElement('div');
+    row.className = 'row user';
+    row.innerHTML = `
+      <div class="avatar-sm">👤</div>
+      <div class="bubble">
+        <img class="msg-img" src="${dataUrl}" onclick="openLightbox(this.src)" />
+        <div class="ts">${now()}</div>
+      </div>`;
+    chat.appendChild(row);
+    scrollBottom();
+  }
+
+  function appendBotMessages(messages) {
+    for (const msg of messages) {
+      if (msg.type === 'text') {
+        appendBotText(msg.text, msg.quick_reply);
+      } else if (msg.type === 'flex') {
+        appendBotFlex(msg);
+      } else {
+        appendBotText(msg.text || JSON.stringify(msg), null);
+      }
+    }
+  }
+
+  function appendBotText(text, qr) {
+    const row = document.createElement('div');
+    row.className = 'row bot';
+    row.innerHTML = `
+      <div class="avatar-sm">🤖</div>
+      <div class="bubble">${escHtml(text)}<div class="ts">${now()}</div></div>`;
+    chat.appendChild(row);
+
+    if (qr && qr.items && qr.items.length) {
+      const wrap = document.createElement('div');
+      wrap.className = 'qr-wrap';
+      for (const item of qr.items) {
+        const btn = document.createElement('button');
+        btn.className = 'qr-btn';
+        btn.textContent = item.label;
+        btn.addEventListener('click', () => {
+          // remove all qr button rows
+          document.querySelectorAll('.qr-wrap').forEach(el => el.remove());
+          sendTextValue(item.text);
+        });
+        wrap.appendChild(btn);
+      }
+      chat.appendChild(wrap);
+    }
+
+    scrollBottom();
+  }
+
+  function appendBotFlex(msg) {
+    const row = document.createElement('div');
+    row.className = 'row bot';
+
+    const card = buildFlexCard(msg.contents, msg.alt_text);
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'avatar-sm';
+    wrapper.textContent = '🤖';
+
+    row.appendChild(wrapper);
+    row.appendChild(card);
+    chat.appendChild(row);
+
+    scrollBottom();
+  }
+
+  // ─── Flex card renderer ───────────────────────────────────────
+  function buildFlexCard(contents, altText) {
+    const card = document.createElement('div');
+    card.className = 'flex-card';
+
+    if (!contents || typeof contents !== 'object') {
+      card.innerHTML = `<div class="fc-body">${escHtml(altText)}</div>`;
+      return card;
+    }
+
+    // Hero section
+    const heroText = extractHeroText(contents);
+    if (heroText) {
+      const hero = document.createElement('div');
+      hero.className = 'fc-hero';
+      hero.textContent = heroText;
+      card.appendChild(hero);
+    } else {
+      const hero = document.createElement('div');
+      hero.className = 'fc-hero';
+      hero.textContent = altText;
+      card.appendChild(hero);
+    }
+
+    // Body — extract key/value rows + text blocks
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'fc-body';
+    bodyEl.innerHTML = extractBodyHtml(contents);
+    card.appendChild(bodyEl);
+
+    // Footer buttons
+    const btns = extractButtons(contents);
+    if (btns.length) {
+      const footer = document.createElement('div');
+      footer.className = 'fc-footer';
+      for (const b of btns) {
+        const btn = document.createElement('button');
+        btn.textContent = b.label;
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.qr-wrap').forEach(el => el.remove());
+          if (b.action === 'message') sendTextValue(b.data);
+          else if (b.action === 'uri') window.open(b.data, '_blank');
+        });
+        footer.appendChild(btn);
+      }
+      card.appendChild(footer);
+    }
+
+    return card;
+  }
+
+  function extractHeroText(c) {
+    if (!c) return null;
+    // bubble → hero box → first text item
+    const hero = c.hero;
+    if (hero && hero.contents) {
+      for (const item of hero.contents) {
+        if (item.type === 'text') return item.text;
+      }
+    }
+    return null;
+  }
+
+  function extractBodyHtml(c) {
+    const lines = [];
+    const SKIP_KEYS = new Set(['backgroundColor', 'paddingAll', 'margin', 'size', 'weight', 'color', 'flex', 'spacing', 'align', 'wrap', 'action', 'layout', 'type']);
+
+    function walk(node, depth) {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { node.forEach(n => walk(n, depth)); return; }
+      if (node.type === 'text' && node.text) {
+        const t = node.text.trim();
+        if (t && t.length > 0) {
+          const style = node.weight === 'bold'
+            ? 'font-weight:700;'
+            : (node.color ? `color:${node.color};` : '');
+          const sizeMap = { xs: '11px', sm: '12px', md: '13px', lg: '15px', xl: '17px', xxl: '20px' };
+          const fs = sizeMap[node.size] ? `font-size:${sizeMap[node.size]};` : '';
+          lines.push(`<div style="${style}${fs}margin-bottom:2px;">${escHtml(t)}</div>`);
+        }
+        return;
+      }
+      if (node.type === 'separator') {
+        lines.push('<hr class="fc-sep"/>');
+        return;
+      }
+      if (node.type === 'box' && node.layout === 'horizontal' && node.contents) {
+        const texts = node.contents.filter(n => n && n.type === 'text' && n.text);
+        if (texts.length === 2) {
+          lines.push(`<div class="fc-row"><span class="lk">${escHtml(texts[0].text)}</span><span class="vl">${escHtml(texts[1].text)}</span></div>`);
+          return;
+        }
+      }
+      // recurse
+      for (const k of Object.keys(node)) {
+        if (!SKIP_KEYS.has(k) && k !== 'hero' && k !== 'footer') {
+          walk(node[k], depth + 1);
+        }
+      }
+    }
+
+    walk(c.body || c, 0);
+    return lines.join('') || `<span style="color:#999;font-size:12px;">— flex message —</span>`;
+  }
+
+  function extractButtons(c) {
+    const btns = [];
+    function walk(node) {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { node.forEach(walk); return; }
+      if (node.type === 'button' && node.action) {
+        const a = node.action;
+        btns.push({
+          label: node.action.label || node.action.text || '…',
+          action: a.type,
+          data: a.text || a.uri || a.data || '',
+        });
+        return;
+      }
+      for (const k of Object.keys(node)) walk(node[k]);
+    }
+    walk(c.footer || c);
+    walk(c.body   || c);
+    return btns;
+  }
+
+  // ─── Send text ────────────────────────────────────────────────
+  async function sendText() {
+    const text = msgInput.value.trim();
+    if (!text) return;
+    msgInput.value = '';
+    msgInput.style.height = 'auto';
+    await sendTextValue(text);
+  }
+
+  async function sendTextValue(text) {
+    appendUserText(text);
+    showTyping();
+
+    const fd = new FormData();
+    fd.append('user_id', userId());
+    fd.append('text', text);
+
+    try {
+      const res = await fetch('/local-chat/message', { method: 'POST', body: fd });
+      const data = await res.json();
+      hideTyping();
+      appendBotMessages(data.messages || []);
+    } catch (e) {
+      hideTyping();
+      appendBotText('❌ Network error: ' + e.message, null);
+    }
+
+    refreshSession();
+  }
+
+  // ─── Send image ───────────────────────────────────────────────
+  async function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      appendUserImage(ev.target.result);
+      showTyping();
+
+      const fd = new FormData();
+      fd.append('user_id', userId());
+      fd.append('file', file);
+
+      try {
+        const res = await fetch('/local-chat/image', { method: 'POST', body: fd });
+        const data = await res.json();
+        hideTyping();
+        appendBotMessages(data.messages || []);
+      } catch (err) {
+        hideTyping();
+        appendBotText('❌ Upload error: ' + err.message, null);
+      }
+
+      refreshSession();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ─── Typing indicator ─────────────────────────────────────────
+  function showTyping() {
+    typing.style.display = 'flex';
+    chat.appendChild(typing);
+    scrollBottom();
+  }
+  function hideTyping() {
+    typing.style.display = 'none';
+  }
+
+  // ─── Lightbox ─────────────────────────────────────────────────
+  function openLightbox(src) {
+    document.getElementById('lightbox-img').src = src;
+    document.getElementById('lightbox').classList.add('open');
+  }
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+  }
+
+  // ─── Escape HTML ──────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/\n/g, '<br>');
+  }
+
+  // ─── Init ─────────────────────────────────────────────────────
+  refreshSession();
+  appendSystem('💬 พิมพ์ "เช็คสิทธิ์เคลมด่วน" เพื่อเริ่มต้น');
+  msgInput.focus();
+</script>
+</body>
+</html>

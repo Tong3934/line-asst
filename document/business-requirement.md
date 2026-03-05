@@ -1,8 +1,8 @@
 # Business Requirement Document (BRD)
 ## LINE Insurance Claims Bot — "เช็คสิทธิ์ & เคลมประกันด่วน"
 
-**Document Version:** 2.1  
-**Date:** February 2026  
+**Document Version:** 2.2  
+**Date:** March 2026  
 **Status:** Draft  
 **Owner:** Product Owner
 
@@ -15,6 +15,7 @@
 | 1.0 | February 2026 | Initial release — eligibility check only |
 | 2.0 | February 2026 | Merged: document upload, AI data extraction, data storage, claim submission, reviewer & manager dashboards |
 | 2.1 | February 2026 | Updated build status: `handlers/`, `storage/`, `ai/` modules now BUILT; new session states; Draft claim status; health policy lookup; trigger keywords; claim engine separation |
+| 2.2 | March 2026 | Phased CD document upload: damage photos first → confirm claim → driving license + สมุดเล่มทะเบียนรถ → submit; 3 new session states (`uploading_damage_photos`, `confirming_claim`, `uploading_identity_docs`); updated user journey, state machine, screens |
 
 ---
 
@@ -146,8 +147,8 @@ LINE is the most-used messaging app in Thailand (50M+ active users). Placing the
 
 | Code | Claim Type | Thai Name | Sub-type | Required Documents |
 |:---:|---|---|---|---|
-| **CD** | Car Damage | เคลมประกันรถยนต์ | With other party (มีคู่กรณี) | Driving license (customer) + **Driving license (other party)** + Vehicle registration + ≥1 damage photo |
-| **CD** | Car Damage | เคลมประกันรถยนต์ | No other party (ไม่มีคู่กรณี) — e.g. hit a pole, wall, or tree | Driving license (customer) + Vehicle registration + ≥1 damage photo |
+| **CD** | Car Damage | เคลมประกันรถยนต์ | With other party (มีคู่กรณี) | **Phase 1:** ≥1 damage photo → **Phase 2:** Confirm claim → **Phase 3:** Driving license (customer) + **Driving license (other party)** + สมุดเล่มทะเบียนรถ (Vehicle registration book) |
+| **CD** | Car Damage | เคลมประกันรถยนต์ | No other party (ไม่มีคู่กรณี) — e.g. hit a pole, wall, or tree | **Phase 1:** ≥1 damage photo → **Phase 2:** Confirm claim → **Phase 3:** Driving license (customer) + สมุดเล่มทะเบียนรถ (Vehicle registration book) |
 | **H** | Health | เคลมประกันสุขภาพ | — | Citizen ID card + Medical certificate + Itemised bill + Receipt(s) |
 
 **Optional documents:**
@@ -175,24 +176,30 @@ Customer (LINE)                System                         Internal (Web)
    upload photo                Display coverage details
                           ↓
 3. Counterpart question   →   CD only: มีคู่กรณี / ไม่มีคู่กรณี
-   (CD only)                   Advance to uploading_documents state
+   (CD only)                   Record counterpart status
                           ↓
-4. Document upload         →   AI categorises each photo
-   (one at a time until        AI extracts key data fields
-    all required received)     Save image + extracted JSON to claim folder
-                               Show customer what was read
-                               Prompt for next missing doc
+4. Phase 1: Damage photos →   CD only: Upload ≥1 car damage photo
+   (CD only)                   AI extracts damage info, GPS from EXIF
+                               Prompt for more damage/location photos
                           ↓
-5. Ownership confirmation  →   Car Damage only (with counterpart):
-   "ของฉัน" / "คู่กรณี"       Assign license to correct party
+5. Phase 2: Confirm claim →   CD only: Bot asks "ยืนยันเริ่มกระบวนการเคลม?"
+   Customer taps "ยืนยัน"   Advance to identity doc upload
+                          ↓
+6. Phase 3: Identity docs →   CD: Upload driving license(s) +
+   + registration              สมุดเล่มทะเบียนรถ (vehicle registration book)
+   (CD) / All docs (H)         H: Upload all docs (citizen ID, med cert,
+                               itemised bill, receipts) in any order
+                          ↓
+7. "ของฉัน" / "คู่กรณี"  →    CD with counterpart only:
+   Ownership confirmation      Assign license to correct party
                                in extracted_data.json
                           ↓
-6. All documents complete  →   Validate completeness
+8. All documents complete  →   Validate completeness
    Customer submits            Set status = Submitted
                                Generate AI summary.md
                                Save final claim package
                           ↓                                ↓
-7. Claim ID shown                              Reviewer opens claim
+9. Claim ID shown                              Reviewer opens claim
    to customer                                 Reviews docs + extracted data
                                                Marks Useful / Not Useful
                                                Updates status (Approved / Rejected / Paid)
@@ -251,9 +258,12 @@ Customer (LINE)                System                         Internal (Web)
 | FR-03.4 | If the AI returns "unknown", it MUST reject the image and tell the user which types are required |
 | FR-03.5 | After each successful upload, the bot MUST confirm which document was recognised and show extracted data |
 | FR-03.6 | The bot MUST always show upload progress: documents received so far and what is still missing |
-| FR-03.7 | **Car Damage — With other party:** driving_license_customer + driving_license_other_party + vehicle_registration + vehicle_damage_photo (≥1); optional: vehicle_location_photo |
-| FR-03.8 | **Car Damage — No other party:** driving_license_customer + vehicle_registration + vehicle_damage_photo (≥1); optional: vehicle_location_photo |
+| FR-03.7 | **Car Damage — With other party:** vehicle_damage_photo (≥1) → confirm claim → driving_license_customer + driving_license_other_party + vehicle_registration; optional: vehicle_location_photo |
+| FR-03.8 | **Car Damage — No other party:** vehicle_damage_photo (≥1) → confirm claim → driving_license_customer + vehicle_registration; optional: vehicle_location_photo |
 | FR-03.9 | **Health required:** citizen_id_card, medical_certificate, itemised_bill, receipt (multiple allowed); optional: discharge_summary |
+| FR-03.10 | **Phased CD upload — Phase 1:** For CD claims, the bot MUST request car damage photos (≥1 required) FIRST before any identity documents. Only `vehicle_damage_photo` and `vehicle_location_photo` (optional) are accepted in this phase. Other document types MUST be rejected with a message asking the customer to send damage photos first |
+| FR-03.11 | **Phased CD upload — Phase 2:** After ≥1 damage photo is uploaded, the bot MUST show a confirmation prompt: "ยืนยันเริ่มกระบวนการเคลม / Confirm to start claim process". The customer MUST tap confirm before proceeding to identity document upload |
+| FR-03.12 | **Phased CD upload — Phase 3:** After confirmation, the bot MUST request identity documents: driving license(s) and สมุดเล่มทะเบียนรถ (vehicle registration book). Only `driving_license` and `vehicle_registration` are accepted in this phase. Damage photos MUST be rejected with a message that damage photos were already collected |
 
 ---
 
@@ -329,8 +339,8 @@ Folder structure per claim:
 |---|---|
 | FR-07.1 | The submit button MUST only appear when ALL required documents are uploaded (state = `ready_to_submit`) |
 | FR-07.2 | On submission attempt, the system re-validates completeness and rejects with a missing document list if incomplete |
-| FR-07.3 | **Car Damage — With other party:** driving license (customer) + driving license (other party) + vehicle registration + ≥1 damage photo |
-| FR-07.4 | **Car Damage — No other party:** driving license (customer) + vehicle registration + ≥1 damage photo |
+| FR-07.3 | **Car Damage — With other party:** vehicle_damage_photo (≥1) + driving license (customer) + driving license (other party) + สมุดเล่มทะเบียนรถ (vehicle registration) |
+| FR-07.4 | **Car Damage — No other party:** vehicle_damage_photo (≥1) + driving license (customer) + สมุดเล่มทะเบียนรถ (vehicle registration) |
 | FR-07.5 | **Health:** citizen ID card + medical certificate + itemised bill + ≥1 receipt |
 | FR-07.6 | On success, claim status MUST be updated from `Draft` to `Submitted` and submission timestamp recorded in `status.yaml` |
 | FR-07.7 | After status update, the system MUST generate an AI bilingual `summary.md` for the claim folder |

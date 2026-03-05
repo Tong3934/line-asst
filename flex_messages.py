@@ -128,128 +128,92 @@ def create_request_info_flex() -> FlexContainer:
 
 def create_vehicle_selection_flex(policies: list) -> FlexContainer:
     """
-    สร้าง Flex Message สำหรับเลือกข้อมูลรถเมื่อพบหลายคัน
+    สร้าง Flex Message แสดงรายการรถหลายคันให้ผู้ใช้เลือก (แสดงจากบนลงล่าง)
     """
-    bubbles = []
-    
+    vehicle_buttons = []
+
     for i, policy in enumerate(policies):
-        full_name = (f"{policy.get('first_name', '').strip()} {policy.get('last_name', '')}").strip() or "-"
-        bubble = {
-            "type": "bubble",
-            "hero": {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"🚗 คันที่ {i+1}",
-                        "weight": "bold",
-                        "size": "xl",
-                        "color": "#FFFFFF"
-                    }
-                ],
-                "backgroundColor": "#0066FF",
-                "paddingAll": "20px"
+        # เอาทะเบียนขึ้นก่อนตามความต้องการ
+        car_label = f"{policy.get('plate', '-')} - {policy.get('car_model', '-')}"
+        # ตัดข้อความให้ไม่เกิน 40 ตัวอักษร
+        if len(car_label) > 40:
+            car_label = car_label[:37] + "..."
+
+        btn = {
+            "type": "button",
+            "action": {
+                "type": "message",
+                "label": car_label,
+                "text": f"เลือกทะเบียน {policy['plate']}"
             },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                    {
-                        "type": "box",
-                        "layout": "baseline",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "ทะเบียนรถ:",
-                                "size": "sm",
-                                "color": "#999999",
-                                "flex": 4
-                            },
-                            {
-                                "type": "text",
-                                "text": policy["plate"],
-                                "size": "sm",
-                                "color": "#333333",
-                                "weight": "bold",
-                                "flex": 6
-                            }
-                        ],
-                        "margin": "md"
-                    },
-                    {
-                        "type": "box",
-                        "layout": "baseline",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "รุ่นรถ:",
-                                "size": "sm",
-                                "color": "#999999",
-                                "flex": 4
-                            },
-                            {
-                                "type": "text",
-                                "text": policy.get("car_model", "-"),
-                                "size": "sm",
-                                "color": "#333333",
-                                "flex": 6,
-                                "wrap": True
-                            }
-                        ],
-                        "margin": "md"
-                    },
-                    {
-                        "type": "box",
-                        "layout": "baseline",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "ชื่อ-นามสกุล:",
-                                "size": "sm",
-                                "color": "#999999",
-                                "flex": 4
-                            },
-                            {
-                                "type": "text",
-                                "text": full_name,
-                                "size": "sm",
-                                "color": "#333333",
-                                "flex": 6,
-                                "wrap": True
-                            }
-                        ],
-                        "margin": "md"
-                    }
-                ],
-                "flex": 1,
-                "paddingAll": "20px"
-            },
-            "footer": {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                    {
-                        "type": "button",
-                        "action": {
-                            "type": "message",
-                            "label": "เลือกรถคันนี้",
-                            "text": f"เลือกทะเบียน {policy['plate']}"
-                        },
-                        "style": "primary",
-                        "color": "#0066FF"
-                    }
-                ],
-                "paddingAll": "15px"
-            }
+            "style": "primary",
+            "margin": "md",
+            "height": "sm",
+            "color": "#0066FF"
         }
-        bubbles.append(bubble)
-        
+        vehicle_buttons.append(btn)
+
     flex_message = {
-        "type": "carousel",
-        "contents": bubbles
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "🗂️ ผลการค้นหารถของคุณ",
+                    "weight": "bold",
+                    "size": "lg",
+                    "color": "#FFFFFF"
+                },
+                {
+                    "type": "text",
+                    "text": f"พบรถที่จดทะเบียนภายใต้ชื่อของคุณ {len(policies)} คัน",
+                    "size": "xs",
+                    "color": "#DDEEFF",
+                    "margin": "xs"
+                }
+            ],
+            "backgroundColor": "#0066FF",
+            "paddingAll": "20px"
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "กรุณาเลือกรถคันที่ต้องการแจ้งเคลม:",
+                    "size": "sm",
+                    "color": "#666666",
+                    "margin": "none",
+                    "weight": "bold"
+                },
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": vehicle_buttons,
+                    "margin": "md"
+                }
+            ],
+            "paddingAll": "20px"
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "💡 คลิกที่รถเพื่อดำเนินการต่อ",
+                    "size": "xxs",
+                    "color": "#999999",
+                    "align": "center"
+                }
+            ],
+            "paddingAll": "10px"
+        }
     }
-    
+
     return FlexContainer.from_dict(flex_message)
 
 def create_policy_info_flex(policy_info: Dict) -> FlexContainer:
@@ -735,11 +699,12 @@ def create_input_method_flex() -> FlexContainer:
                 },
                 {
                     "type": "text",
-                    "text": "หรือพิมพ์ข้อมูลเอง:",
+                    "text": "หรือพิมพ์ข้อมูลเอง (เลขประจำตัวประชาชน, ทะเบียนรถ, หรือชื่อ):",
                     "size": "xs",
                     "color": "#999999",
                     "margin": "xl",
-                    "align": "center"
+                    "align": "center",
+                    "wrap": True
                 },
                 {
                     "type": "button",
@@ -772,95 +737,6 @@ def create_input_method_flex() -> FlexContainer:
     return FlexContainer.from_dict(flex_message)
 
 
-def create_vehicle_selection_flex(policies: list) -> FlexContainer:
-    """
-    สร้าง Flex Message แสดงรายการรถหลายคันให้ผู้ใช้เลือก
-    """
-    vehicle_buttons = []
-
-    for i, policy in enumerate(policies):
-        # เอาทะเบียนขึ้นก่อนตามความต้องการ
-        car_label = f"{policy.get('plate', '-')} - {policy.get('car_model', '-')}"
-        # ตัดข้อความให้ไม่เกิน 40 ตัวอักษร
-        if len(car_label) > 40:
-            car_label = car_label[:37] + "..."
-
-        btn = {
-            "type": "button",
-            "action": {
-                "type": "message",
-                "label": car_label,
-                "text": f"เลือกรถ:{policy['plate']}"
-            },
-            "style": "primary",
-            "margin": "md",
-            "height": "sm",
-            "color": "#0066FF"
-        }
-        vehicle_buttons.append(btn)
-
-    flex_message = {
-        "type": "bubble",
-        "header": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                {
-                    "type": "text",
-                    "text": "🗂️ ผลการค้นหารถของคุณ",
-                    "weight": "bold",
-                    "size": "lg",
-                    "color": "#FFFFFF"
-                },
-                {
-                    "type": "text",
-                    "text": f"พบรถที่จดทะเบียนภายใต้ชื่อของคุณ {len(policies)} คัน",
-                    "size": "xs",
-                    "color": "#DDEEFF",
-                    "margin": "xs"
-                }
-            ],
-            "backgroundColor": "#0066FF",
-            "paddingAll": "20px"
-        },
-        "body": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                {
-                    "type": "text",
-                    "text": "กรุณาเลือกรถคันที่ต้องการแจ้งเคลม:",
-                    "size": "sm",
-                    "color": "#666666",
-                    "margin": "none",
-                    "weight": "bold"
-                },
-                {
-                    "type": "box",
-                    "layout": "vertical",
-                    "contents": vehicle_buttons,
-                    "margin": "md"
-                }
-            ],
-            "paddingAll": "20px"
-        },
-        "footer": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                {
-                    "type": "text",
-                    "text": "💡 คลิกที่รถเพื่อดำเนินการต่อ",
-                    "size": "xxs",
-                    "color": "#999999",
-                    "align": "center"
-                }
-            ],
-            "paddingAll": "10px"
-        }
-    }
-
-    return FlexContainer.from_dict(flex_message)
 
 
 
@@ -1315,21 +1191,97 @@ def create_document_checklist_flex(
 
 
 def create_doc_received_flex(category: str, fields: Dict, missing: list) -> FlexContainer:
-    """Confirmation bubble shown after a document image is accepted."""
+    """Confirmation bubble shown after a document image is accepted.
+
+    Shows both the extracted field data and remaining-document count.
+    """
     label_map = {
         "driving_license_customer": "ใบขับขี่ (ของคุณ)",
         "driving_license_other_party": "ใบขับขี่ (คู่กรณี)",
         "vehicle_registration": "สมุดทะเบียนรถ",
         "vehicle_damage_photo": "รูปความเสียหาย",
+        "vehicle_location_photo": "รูปจุดเกิดเหตุ",
         "citizen_id_card": "บัตรประชาชน",
         "medical_certificate": "ใบรับรองแพทย์",
         "itemised_bill": "ใบแจงค่าใช้จ่าย",
         "receipt": "ใบเสร็จรับเงิน",
+        "discharge_summary": "ใบสรุปการรักษา",
         "driving_license": "ใบขับขี่",
     }
+    # Human-readable labels for extracted field keys
+    field_label_map = {
+        "full_name_th": "ชื่อ (ไทย)",
+        "full_name_en": "ชื่อ (EN)",
+        "citizen_id": "เลขบัตร ปชช.",
+        "license_id": "เลขใบขับขี่",
+        "date_of_birth": "วันเกิด",
+        "issue_date": "วันออก",
+        "expiry_date": "วันหมดอายุ",
+        "plate": "ทะเบียนรถ",
+        "province": "จังหวัด",
+        "vehicle_type": "ประเภทรถ",
+        "brand": "ยี่ห้อ",
+        "model_year": "ปีรุ่น",
+        "chassis_number": "เลขตัวถัง",
+        "engine_number": "เลขเครื่อง",
+        "damage_location": "ตำแหน่งเสียหาย",
+        "damage_description": "ลักษณะ",
+        "severity": "ระดับ",
+        "patient_name": "ชื่อผู้ป่วย",
+        "diagnosis": "การวินิจฉัย",
+        "treatment": "การรักษา",
+        "doctor_name": "แพทย์",
+        "hospital": "โรงพยาบาล",
+        "hospital_name": "โรงพยาบาล",
+        "date": "วันที่",
+        "total": "ยอดรวม",
+        "total_paid": "ยอดชำระ",
+        "billing_number": "เลขที่บิล",
+        "admission_date": "วันเข้ารักษา",
+        "discharge_date": "วันออก",
+        "filename": "ไฟล์",
+    }
+
     cat_label = label_map.get(category, category)
     remaining = len(missing)
     remaining_text = f"ยังขาดอีก {remaining} รายการ" if remaining else "ครบถ้วนแล้ว! 🎉"
+
+    # Build extracted-field rows
+    field_rows = []
+    if fields:
+        for key, value in fields.items():
+            if value is None or key in ("gps_lat", "gps_lon"):
+                continue
+            # Skip nested structures (e.g. line_items list)
+            if isinstance(value, (list, dict)):
+                continue
+            fl = field_label_map.get(key, key)
+            field_rows.append({
+                "type": "box",
+                "layout": "baseline",
+                "contents": [
+                    {"type": "text", "text": fl, "size": "xs", "color": "#999999", "flex": 4},
+                    {"type": "text", "text": str(value), "size": "xs", "color": "#333333", "flex": 6, "wrap": True},
+                ],
+                "margin": "sm",
+            })
+
+    body_contents = []
+    if field_rows:
+        body_contents.append(
+            {"type": "text", "text": "📋 ข้อมูลที่อ่านได้:", "size": "xs", "color": "#666666", "weight": "bold"}
+        )
+        body_contents.extend(field_rows)
+        body_contents.append({"type": "separator", "margin": "md"})
+
+    body_contents.append(
+        {"type": "text", "text": remaining_text, "size": "sm", "color": "#333333", "margin": "md", "weight": "bold"}
+    )
+    if missing:
+        missing_labels = [label_map.get(m, m) for m in missing]
+        body_contents.append(
+            {"type": "text", "text": "📎 " + ", ".join(missing_labels), "size": "xxs", "color": "#999999", "wrap": True, "margin": "sm"}
+        )
 
     flex_message = {
         "type": "bubble",
@@ -1337,7 +1289,7 @@ def create_doc_received_flex(category: str, fields: Dict, missing: list) -> Flex
             "type": "box",
             "layout": "vertical",
             "contents": [
-                {"type": "text", "text": f"📄 รับเอกสาร: {cat_label}", "weight": "bold", "size": "sm", "color": "#FFFFFF"}
+                {"type": "text", "text": f"✅ รับเอกสาร: {cat_label}", "weight": "bold", "size": "sm", "color": "#FFFFFF"}
             ],
             "backgroundColor": "#00B900",
             "paddingAll": "14px",
@@ -1345,9 +1297,7 @@ def create_doc_received_flex(category: str, fields: Dict, missing: list) -> Flex
         "body": {
             "type": "box",
             "layout": "vertical",
-            "contents": [
-                {"type": "text", "text": remaining_text, "size": "sm", "color": "#333333", "margin": "none"},
-            ],
+            "contents": body_contents,
             "paddingAll": "18px",
         },
     }
@@ -1467,6 +1417,165 @@ def create_submission_confirmed_flex(claim_id: str) -> FlexContainer:
                     ],
                     "margin": "lg",
                 },
+            ],
+            "paddingAll": "20px",
+        },
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
+# ── Phase-3 additions (v2.2 phased CD upload) ─────────────────────────────────
+
+
+def create_damage_photo_request_flex() -> FlexContainer:
+    """Phase 1 prompt — ask customer to send car damage photos first."""
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "📸 ส่งรูปความเสียหาย", "weight": "bold", "size": "lg", "color": "#FFFFFF"}
+            ],
+            "backgroundColor": "#FF6B00",
+            "paddingAll": "16px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "กรุณาถ่ายรูปความเสียหายของรถและส่งมาค่ะ\nPlease send photos of the car damage.",
+                    "size": "sm",
+                    "color": "#333333",
+                    "wrap": True,
+                },
+                {"type": "separator", "margin": "md"},
+                {
+                    "type": "text",
+                    "text": "📷 รูปความเสียหาย (อย่างน้อย 1 รูป)\n📷 รูปจุดเกิดเหตุ (ถ้ามี — ไม่บังคับ)",
+                    "size": "xs",
+                    "color": "#666666",
+                    "wrap": True,
+                    "margin": "md",
+                },
+                {
+                    "type": "text",
+                    "text": "💡 ถ่ายให้ชัดเจน เห็นตำแหน่งเสียหาย",
+                    "size": "xxs",
+                    "color": "#999999",
+                    "wrap": True,
+                    "margin": "md",
+                },
+            ],
+            "paddingAll": "20px",
+        },
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
+def create_confirm_claim_flex(damage_count: int) -> FlexContainer:
+    """Phase 2 prompt — confirm to start claim process after damage photos received."""
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "✅ ได้รับรูปความเสียหายแล้ว", "weight": "bold", "size": "md", "color": "#FFFFFF"}
+            ],
+            "backgroundColor": "#00B900",
+            "paddingAll": "16px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": f"ได้รับรูปความเสียหาย {damage_count} รูป\nReceived {damage_count} damage photo(s)",
+                    "size": "sm",
+                    "color": "#333333",
+                    "wrap": True,
+                },
+                {"type": "separator", "margin": "md"},
+                {
+                    "type": "text",
+                    "text": "ยืนยันเริ่มกระบวนการเคลม?\nConfirm to start claim process?",
+                    "size": "sm",
+                    "color": "#333333",
+                    "wrap": True,
+                    "margin": "md",
+                    "weight": "bold",
+                },
+            ],
+            "paddingAll": "20px",
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "✅ ยืนยัน / Confirm", "text": "ยืนยัน"},
+                    "style": "primary",
+                    "color": "#00B900",
+                    "height": "sm",
+                },
+            ],
+            "paddingAll": "15px",
+        },
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
+def create_identity_doc_request_flex(has_counterpart: str, uploaded_docs: Dict) -> FlexContainer:
+    """Phase 3 prompt — ask customer to send driving license(s) + vehicle registration."""
+    docs = [
+        ("driving_license_customer", "🪪 ใบขับขี่ (ของคุณ) / Your Driving License"),
+    ]
+    if has_counterpart == "มีคู่กรณี":
+        docs.append(("driving_license_other_party", "🪪 ใบขับขี่ (คู่กรณี) / Other Party's License"))
+    docs.append(("vehicle_registration", "📄 สมุดเล่มทะเบียนรถ / Vehicle Registration Book"))
+
+    rows = []
+    for key, label in docs:
+        done = key in uploaded_docs
+        icon = "✅" if done else "⬜"
+        rows.append({
+            "type": "text",
+            "text": f"{icon} {label}",
+            "size": "sm",
+            "color": "#333333" if done else "#666666",
+            "margin": "sm",
+            "wrap": True,
+        })
+
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "📄 ส่งเอกสารยืนยันตัวตน", "weight": "bold", "size": "md", "color": "#FFFFFF"}
+            ],
+            "backgroundColor": "#0066FF",
+            "paddingAll": "16px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "กรุณาส่งเอกสารต่อไปนี้ค่ะ\nPlease send the following documents:",
+                    "size": "sm",
+                    "color": "#333333",
+                    "wrap": True,
+                },
+                {"type": "separator", "margin": "md"},
+                *rows,
             ],
             "paddingAll": "20px",
         },
