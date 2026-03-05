@@ -7,16 +7,21 @@ Never hard-code credentials here — use .env / Kubernetes Secrets.
 
 import os
 
-# ── AI Model ──────────────────────────────────────────────────────────────────
-GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
+# ── AI Model (Azure OpenAI) ───────────────────────────────────────────────────
+AZURE_OPENAI_ENDPOINT: str   = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+AZURE_OPENAI_API_KEY: str    = os.getenv("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_DEPLOYMENT: str = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+AZURE_OPENAI_API_VERSION: str = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
+# Backward compat alias
+GEMINI_MODEL: str = AZURE_OPENAI_DEPLOYMENT
 
-# ── Gemini Token Pricing (USD per 1 000 tokens) ───────────────────────────────
-# Update when Google changes GA pricing.  Override via env in production.
-PRICE_INPUT_PER_1K: float  = float(os.getenv("GEMINI_PRICE_INPUT",  "0.00035"))
-PRICE_OUTPUT_PER_1K: float = float(os.getenv("GEMINI_PRICE_OUTPUT", "0.00105"))
+# ── Token Pricing (USD per 1 000 tokens) ──────────────────────────────────────
+PRICE_INPUT_PER_1K: float  = float(os.getenv("AI_PRICE_INPUT",  "0.0025"))
+PRICE_OUTPUT_PER_1K: float = float(os.getenv("AI_PRICE_OUTPUT", "0.01"))
 
 # ── Storage ───────────────────────────────────────────────────────────────────
 DATA_DIR: str = os.getenv("DATA_DIR", "/data")
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # ── LINE API Hosts (overridable for mock-chat testing) ────────────────────────
 LINE_API_HOST: str      = os.getenv("LINE_API_HOST",      "https://api.line.me")
@@ -33,6 +38,19 @@ VALID_CATEGORIES: frozenset = frozenset({
     "discharge_summary",
     "vehicle_damage_photo",
     "vehicle_location_photo",
+})
+
+# ── Phased CD upload — accepted categories per phase ─────────────────────────
+# Phase 1: Only damage/location photos accepted
+PHASE1_CATEGORIES: frozenset = frozenset({
+    "vehicle_damage_photo",
+    "vehicle_location_photo",
+})
+
+# Phase 3: Only identity docs + vehicle registration accepted
+PHASE3_CATEGORIES: frozenset = frozenset({
+    "driving_license",
+    "vehicle_registration",
 })
 
 # ── Required documents per claim type / sub-type ─────────────────────────────
@@ -69,14 +87,15 @@ OPTIONAL_DOCS: dict = {
 # ── Claim Status Lifecycle ────────────────────────────────────────────────────
 # Maps current status → list of allowed next statuses (Reviewer dashboard)
 VALID_TRANSITIONS: dict = {
-    "Submitted":    ["Under Review"],
-    "Under Review": ["Pending", "Approved", "Rejected"],
-    "Pending":      ["Under Review", "Rejected"],
-    "Approved":     ["Paid"],
+    "Draft":                   ["Submitted", "Under Review"],
+    "Submitted":               ["Under Review", "Rejected"],
+    "Under Review":            ["Request Additional Info", "Approved", "Rejected"],
+    "Request Additional Info": ["Under Review", "Rejected"],
+    "Approved":                ["Paid"],
 }
 
 ALL_STATUSES: tuple = (
-    "Submitted", "Under Review", "Pending", "Approved", "Rejected", "Paid"
+    "Draft", "Submitted", "Under Review", "Request Additional Info", "Approved", "Rejected", "Paid"
 )
 
 # ── Conversation Cancel Keywords ─────────────────────────────────────────────

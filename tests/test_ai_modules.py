@@ -1,20 +1,20 @@
 """
 test_ai_modules.py
 ==================
-Unit tests for the ai/ package.
+Unit tests for the ai/ package (Azure OpenAI backend).
 
 Strategy
 --------
-- Patch ``ai._model`` (the shared GenerativeModel instance) so no real Gemini
-  calls are made.
-- For sub-modules (ocr, categorise, extract), patch ``ai.ocr.call_gemini`` /
-  ``ai.categorise.call_gemini`` / ``ai.extract.call_gemini`` at the import-time
+- Patch ``ai._client`` (the shared AzureOpenAI instance) so no real API calls
+  are made.
+- For sub-modules (ocr, categorise, extract), patch ``ai.ocr.call_ai`` /
+  ``ai.categorise.call_ai`` / ``ai.extract.call_ai`` at the import-time
   binding so the patch takes effect inside each module.
 - Use ``tmp_path`` (monkeypatched into ``constants.DATA_DIR``) for token record tests.
 
 Areas covered
 -------------
-  AI-01  ai.__init__.call_gemini    — wrapper: result, token record, metadata absent, exception
+  AI-01  ai.__init__.call_ai / call_gemini — wrapper: result, token record, metadata absent, exception
   AI-02  ai.ocr.extract_id_from_image — JSON parse, unknown, exception fallback, no-PII-in-log
   AI-03  ai.categorise.categorise_document — valid, unknown, exception
   AI-04  ai.extract.extract_fields  — valid JSON, no-prompt category, no-JSON response, exception
@@ -45,30 +45,35 @@ def _make_fake_image_bytes() -> bytes:
     return buf.getvalue()
 
 
-def _mock_model(text: str = "result text") -> MagicMock:
-    """Return a mock GenerativeModel whose generate_content returns ``text``."""
-    model = MagicMock()
-    response = MagicMock()
-    response.text = text
-    response.usage_metadata.prompt_token_count = 10
-    response.usage_metadata.candidates_token_count = 20
-    model.generate_content.return_value = response
-    return model
+def _mock_completion(text: str = "result text"):
+    """Return a mock Azure OpenAI ChatCompletion response."""
+    mock_choice = MagicMock()
+    mock_choice.message.content = text
+    completion = MagicMock()
+    completion.choices = [mock_choice]
+    completion.usage = MagicMock(prompt_tokens=10, completion_tokens=20)
+    return completion
+
+
+def _mock_client(text: str = "result text") -> MagicMock:
+    """Return a mock AzureOpenAI client."""
+    client = MagicMock()
+    client.chat.completions.create.return_value = _mock_completion(text)
+    return client
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AI-01  ai.__init__.call_gemini
+# AI-01  ai.__init__.call_ai / call_gemini
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestCallGemini:
-    """AI-01: call_gemini wrapper behaviour."""
+    """AI-01: call_ai / call_gemini wrapper behaviour."""
 
     def test_returns_response_text(self, tmp_path, monkeypatch):
         import constants
         monkeypatch.setattr(constants, "DATA_DIR", str(tmp_path))
         import ai as ai_mod
-        monkeypatch.setattr(constants, "DATA_DIR", str(tmp_path))
-        with patch.object(ai_mod, "_model", _mock_model("hello world")):
+        with patch.object(ai_mod, "_client", _mock_client("hello world")):
             result = ai_mod.call_gemini("test_op", "some prompt")
         assert result == "hello world"
 
@@ -76,9 +81,8 @@ class TestCallGemini:
         import constants
         monkeypatch.setattr(constants, "DATA_DIR", str(tmp_path))
         import ai as ai_mod
-        with patch.object(ai_mod, "_model", _mock_model("hi")):
+        with patch.object(ai_mod, "_client", _mock_client("hi")):
             ai_mod.call_gemini("test_op", "prompt")
-        # Should have written a JSONL file under token_records/
         from datetime import datetime, timezone
         month = datetime.now(timezone.utc).strftime("%Y-%m")
         token_file = tmp_path / "token_records" / f"{month}.jsonl"
@@ -88,7 +92,7 @@ class TestCallGemini:
         import constants
         monkeypatch.setattr(constants, "DATA_DIR", str(tmp_path))
         import ai as ai_mod
-        with patch.object(ai_mod, "_model", _mock_model("hi")):
+        with patch.object(ai_mod, "_client", _mock_client("hi")):
             ai_mod.call_gemini("myop", "prompt")
         from datetime import datetime, timezone
         month = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -102,13 +106,15 @@ class TestCallGemini:
         import constants
         monkeypatch.setattr(constants, "DATA_DIR", str(tmp_path))
         import ai as ai_mod
-        model = MagicMock()
-        response = MagicMock()
-        response.text = "ok"
-        # Make usage_metadata raise AttributeError
-        type(response).usage_metadata = PropertyMock(side_effect=AttributeError("no metadata"))
-        model.generate_content.return_value = response
-        with patch.object(ai_mod, "_model", model):
+        client = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.message.content = "ok"
+        completion = MagicMock()
+        completion.choices = [mock_choice]
+        # Make usage raise AttributeError
+        type(completion).usage = PropertyMock(side_effect=AttributeError("no usage"))
+        client.chat.completions.create.return_value = completion
+        with patch.object(ai_mod, "_client", client):
             result = ai_mod.call_gemini("op_no_meta", "prompt")
         assert result == "ok"
 
@@ -116,10 +122,10 @@ class TestCallGemini:
         import constants
         monkeypatch.setattr(constants, "DATA_DIR", str(tmp_path))
         import ai as ai_mod
-        model = MagicMock()
-        model.generate_content.side_effect = RuntimeError("Gemini down")
-        with patch.object(ai_mod, "_model", model):
-            with pytest.raises(RuntimeError, match="Gemini down"):
+        client = MagicMock()
+        client.chat.completions.create.side_effect = RuntimeError("API down")
+        with patch.object(ai_mod, "_client", client):
+            with pytest.raises(RuntimeError, match="API down"):
                 ai_mod.call_gemini("failing_op", "prompt")
 
 
@@ -134,9 +140,8 @@ class TestTokenRecord:
         import constants
         monkeypatch.setattr(constants, "DATA_DIR", str(tmp_path))
         import ai as ai_mod
-        # Use known pricing to verify cost
-        price_in  = constants.PRICE_INPUT_PER_1K   # e.g. 0.00035
-        price_out = constants.PRICE_OUTPUT_PER_1K  # e.g. 0.00105
+        price_in  = constants.PRICE_INPUT_PER_1K
+        price_out = constants.PRICE_OUTPUT_PER_1K
         in_tok, out_tok = 1000, 1000
         expected_cost = round((in_tok / 1000 * price_in) + (out_tok / 1000 * price_out), 6)
 
@@ -178,7 +183,7 @@ class TestOcr:
 
     def test_id_card_type_returned(self):
         fake_response = '{"type": "id_card", "value": "1234567890123"}'
-        with patch("ai.ocr.call_gemini", return_value=fake_response):
+        with patch("ai.ocr.call_ai", return_value=fake_response):
             from ai.ocr import extract_id_from_image
             result = extract_id_from_image(self._IMG)
         assert result["type"] == "id_card"
@@ -186,14 +191,14 @@ class TestOcr:
 
     def test_driving_license_type_returned(self):
         fake_response = '{"type": "driving_license", "value": "9876543210987"}'
-        with patch("ai.ocr.call_gemini", return_value=fake_response):
+        with patch("ai.ocr.call_ai", return_value=fake_response):
             from ai.ocr import extract_id_from_image
             result = extract_id_from_image(self._IMG)
         assert result["type"] == "driving_license"
 
     def test_license_plate_type_returned(self):
         fake_response = '{"type": "license_plate", "value": "1กข1234"}'
-        with patch("ai.ocr.call_gemini", return_value=fake_response):
+        with patch("ai.ocr.call_ai", return_value=fake_response):
             from ai.ocr import extract_id_from_image
             result = extract_id_from_image(self._IMG)
         assert result["type"] == "license_plate"
@@ -201,20 +206,20 @@ class TestOcr:
 
     def test_unknown_image_returns_unknown(self):
         fake_response = '{"type": "unknown", "value": null}'
-        with patch("ai.ocr.call_gemini", return_value=fake_response):
+        with patch("ai.ocr.call_ai", return_value=fake_response):
             from ai.ocr import extract_id_from_image
             result = extract_id_from_image(self._IMG)
         assert result["type"] == "unknown"
         assert result["value"] is None
 
     def test_non_json_response_returns_unknown_fallback(self):
-        with patch("ai.ocr.call_gemini", return_value="This is not JSON"):
+        with patch("ai.ocr.call_ai", return_value="This is not JSON"):
             from ai.ocr import extract_id_from_image
             result = extract_id_from_image(self._IMG)
         assert result == {"type": "unknown", "value": None}
 
     def test_exception_in_call_returns_unknown_fallback(self):
-        with patch("ai.ocr.call_gemini", side_effect=RuntimeError("AI error")):
+        with patch("ai.ocr.call_ai", side_effect=RuntimeError("AI error")):
             from ai.ocr import extract_id_from_image
             result = extract_id_from_image(self._IMG)
         assert result == {"type": "unknown", "value": None}
@@ -223,7 +228,7 @@ class TestOcr:
         """PII (CID number) must NOT appear in log output."""
         secret_cid = "3100701443816"
         fake_response = f'{{"type": "id_card", "value": "{secret_cid}"}}'
-        with patch("ai.ocr.call_gemini", return_value=fake_response):
+        with patch("ai.ocr.call_ai", return_value=fake_response):
             import logging
             with caplog.at_level(logging.INFO, logger="ai.ocr"):
                 from ai.ocr import extract_id_from_image
@@ -252,31 +257,31 @@ class TestCategorise:
         "vehicle_location_photo",
     ])
     def test_valid_category_returned(self, category):
-        with patch("ai.categorise.call_gemini", return_value=category):
+        with patch("ai.categorise.call_ai", return_value=category):
             from ai.categorise import categorise_document
             result = categorise_document(self._IMG)
         assert result == category
 
     def test_unknown_ai_response_returns_unknown(self):
-        with patch("ai.categorise.call_gemini", return_value="passport"):
+        with patch("ai.categorise.call_ai", return_value="passport"):
             from ai.categorise import categorise_document
             result = categorise_document(self._IMG)
         assert result == "unknown"
 
     def test_extra_whitespace_stripped(self):
-        with patch("ai.categorise.call_gemini", return_value="  driving_license  "):
+        with patch("ai.categorise.call_ai", return_value="  driving_license  "):
             from ai.categorise import categorise_document
             result = categorise_document(self._IMG)
         assert result == "driving_license"
 
     def test_exception_returns_unknown(self):
-        with patch("ai.categorise.call_gemini", side_effect=RuntimeError("error")):
+        with patch("ai.categorise.call_ai", side_effect=RuntimeError("error")):
             from ai.categorise import categorise_document
             result = categorise_document(self._IMG)
         assert result == "unknown"
 
     def test_empty_response_returns_unknown(self):
-        with patch("ai.categorise.call_gemini", return_value=""):
+        with patch("ai.categorise.call_ai", return_value=""):
             from ai.categorise import categorise_document
             result = categorise_document(self._IMG)
         assert result == "unknown"
@@ -293,13 +298,13 @@ class TestExtract:
 
     def test_driving_license_extracts_fields(self):
         fake_json = '{"full_name_th": "สมชาย", "license_id": "12345678"}'
-        with patch("ai.extract.call_gemini", return_value=fake_json):
+        with patch("ai.extract.call_ai", return_value=fake_json):
             from ai.extract import extract_fields
             result = extract_fields(self._IMG, "driving_license")
         assert result["full_name_th"] == "สมชาย"
 
     def test_unknown_category_returns_empty_dict(self):
-        with patch("ai.extract.call_gemini", return_value="{}") as mock_call:
+        with patch("ai.extract.call_ai", return_value="{}") as mock_call:
             from ai.extract import extract_fields
             result = extract_fields(self._IMG, "not_a_real_category")
         # Should return empty without calling AI
@@ -307,26 +312,26 @@ class TestExtract:
         mock_call.assert_not_called()
 
     def test_no_json_in_response_returns_empty(self):
-        with patch("ai.extract.call_gemini", return_value="Sorry, cannot read."):
+        with patch("ai.extract.call_ai", return_value="Sorry, cannot read."):
             from ai.extract import extract_fields
             result = extract_fields(self._IMG, "driving_license")
         assert result == {}
 
     def test_invalid_json_returns_empty(self):
-        with patch("ai.extract.call_gemini", return_value="{bad json"):
+        with patch("ai.extract.call_ai", return_value="{bad json"):
             from ai.extract import extract_fields
             result = extract_fields(self._IMG, "driving_license")
         assert result == {}
 
     def test_exception_returns_empty(self):
-        with patch("ai.extract.call_gemini", side_effect=RuntimeError("fail")):
+        with patch("ai.extract.call_ai", side_effect=RuntimeError("fail")):
             from ai.extract import extract_fields
             result = extract_fields(self._IMG, "driving_license")
         assert result == {}
 
     def test_vehicle_damage_photo_adds_gps_keys(self):
         fake_json = '{"damage_location": "ประตูซ้าย", "severity": "minor"}'
-        with patch("ai.extract.call_gemini", return_value=fake_json):
+        with patch("ai.extract.call_ai", return_value=fake_json):
             # Patch GPS extraction to return known coords
             with patch("ai.extract._extract_gps_from_exif", return_value=(13.7563, 100.5018)):
                 from ai.extract import extract_fields
@@ -339,9 +344,6 @@ class TestExtract:
         """Every VALID_CATEGORY (except vehicle_location_photo edge-case) must have a prompt."""
         from ai.extract import _PROMPTS
         from constants import VALID_CATEGORIES
-        # vehicle_damage_photo and vehicle_location_photo are both in VALID_CATEGORIES
-        # Some categories may share prompt keys — check that extract_fields doesn't return {}
-        # for core ID/registration categories
         for cat in ("driving_license", "vehicle_registration", "citizen_id_card",
                     "medical_certificate", "itemised_bill", "receipt"):
             assert cat in _PROMPTS, f"Missing prompt for {cat}"

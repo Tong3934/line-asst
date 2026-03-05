@@ -14,7 +14,7 @@ from typing import Dict
 
 from PIL import Image
 
-from ai import call_gemini
+from ai import call_ai
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def extract_id_from_image(image_bytes: bytes) -> Dict:
     """
     try:
         img = Image.open(io.BytesIO(image_bytes))
-        raw = call_gemini("ocr_id_image", _PROMPT, img)
+        raw = call_ai("ocr_id_image", _PROMPT, img)
         match = re.search(r'\{.*\}', raw, re.DOTALL)
         if match:
             result = json.loads(match.group(0))

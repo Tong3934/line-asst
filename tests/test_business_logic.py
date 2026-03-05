@@ -443,12 +443,12 @@ class TestClaimStatusLifecycle:
 
 @pytest.mark.unit
 class TestPhoneNumberExtraction:
-    """BL-09: extract_phone_from_response — Thai phone pattern extractor in main.py."""
+    """BL-09: extract_phone_from_response — Thai phone pattern extractor in claim_engine.py."""
 
     @pytest.fixture(autouse=True)
     def _import_fn(self):
-        import main as m
-        self.fn = m.extract_phone_from_response
+        from claim_engine import extract_phone_from_response
+        self.fn = extract_phone_from_response
 
     @pytest.mark.parametrize("text,expected", [
         ("โทร 1557",                    "1557"),

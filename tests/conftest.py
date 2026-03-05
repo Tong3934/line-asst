@@ -53,6 +53,10 @@ def _set_env_vars(tmp_path_factory):
     env_overrides = {
         "LINE_CHANNEL_ACCESS_TOKEN": MOCK_CHANNEL_ACCESS_TOKEN,
         "LINE_CHANNEL_SECRET":       MOCK_CHANNEL_SECRET,
+        "AZURE_OPENAI_API_KEY":      "fake_azure_key_for_tests",
+        "AZURE_OPENAI_ENDPOINT":     "https://fake.openai.azure.com/",
+        "AZURE_OPENAI_DEPLOYMENT":   "gpt-4o",
+        "AZURE_OPENAI_API_VERSION":  "2024-12-01-preview",
         "GEMINI_API_KEY":            "fake_gemini_key_for_tests",
         "DATA_DIR":                  str(tmp_data),
         "LINE_API_HOST":             "http://localhost:8001",
@@ -69,15 +73,30 @@ def _set_env_vars(tmp_path_factory):
 @pytest.fixture(scope="session", autouse=True)
 def _stub_genai(_set_env_vars):
     """
-    Replace `google.generativeai` with a thin MagicMock so main.py can be
-    imported without real credentials.
+    Replace Azure OpenAI client and legacy Google GenAI modules with mocks
+    so the app can be imported without real credentials.
     """
-    genai_stub = MagicMock()
-    genai_stub.configure = MagicMock()
-    genai_stub.GenerativeModel.return_value = MagicMock()
-    sys.modules["google"] = MagicMock()
-    sys.modules["google.generativeai"] = genai_stub
-    yield genai_stub
+    # Mock Azure OpenAI completion response
+    mock_choice = MagicMock()
+    mock_choice.message.content = "mock AI response"
+    mock_completion = MagicMock()
+    mock_completion.choices = [mock_choice]
+    mock_completion.usage = MagicMock(prompt_tokens=10, completion_tokens=20)
+
+    mock_azure_client = MagicMock()
+    mock_azure_client.chat.completions.create.return_value = mock_completion
+    mock_azure_client.files.upload.return_value = MagicMock(name="files/mock123")
+    mock_azure_client.files.delete = MagicMock()
+
+    # Patch the AzureOpenAI constructor to return our mock
+    with patch("openai.AzureOpenAI", return_value=mock_azure_client):
+        # Keep legacy google.genai stubs so any remaining imports don't crash
+        genai_stub = MagicMock()
+        genai_stub.Client.return_value = MagicMock()
+        sys.modules["google.genai"] = genai_stub
+        sys.modules["google.genai.types"] = MagicMock()
+        sys.modules["google.generativeai"] = MagicMock()
+        yield mock_azure_client
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -192,23 +211,26 @@ def mock_line_api():
 @pytest.fixture()
 def mock_gemini():
     """
-    Patch the shared Gemini model in the ai package so all AI calls
+    Patch the Azure OpenAI client in the ai package so all AI calls
     return configurable fake responses.
 
-    In v2.0 the model lives at ai._model (used via ai.call_gemini).
-    Exposes `.generate_content` — tests can reassign `.return_value` as needed.
+    In v2.0+, the client is patched at ai._client (used via ai.call_ai / ai.call_gemini).
+    Exposes `.chat.completions.create` — tests can reassign `.return_value` as needed.
     """
     # Default OCR response: returns a valid JSON string for an ID card
     default_ocr_text = json.dumps(OCR_RESPONSE_ID_CARD)
-    mock_response = MagicMock()
-    mock_response.text = default_ocr_text
+    mock_choice = MagicMock()
+    mock_choice.message.content = default_ocr_text
+    mock_completion = MagicMock()
+    mock_completion.choices = [mock_choice]
+    mock_completion.usage = MagicMock(prompt_tokens=10, completion_tokens=20)
 
-    mock_model = MagicMock()
-    mock_model.generate_content.return_value = mock_response
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = mock_completion
 
-    with patch("ai._model", mock_model), \
-         patch("config.gemini_model", mock_model):
-        yield mock_model
+    with patch("ai._client", mock_client), \
+         patch("config.gemini_model", MagicMock()):
+        yield mock_client
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -248,13 +270,10 @@ def mock_policy_lookup():
     Yields a dict with keys: `by_cid`, `by_plate`, `by_name` — each is a
     MagicMock whose `.return_value` can be adjusted per test.
     """
-    # In the current main.py the lookups are imported directly from mock_data
-    with patch("main.search_policies_by_cid",   return_value=[CD_POLICY_ACTIVE_CLASS1]) as p_cid, \
-         patch("main.search_policies_by_plate",  return_value=CD_POLICY_ACTIVE_CLASS1)  as p_plate, \
-         patch("main.search_policies_by_name",   return_value=[CD_POLICY_ACTIVE_CLASS1]) as p_name, \
-         patch("handlers.identity.search_policies_by_cid",  return_value=[CD_POLICY_ACTIVE_CLASS1]), \
-         patch("handlers.identity.search_policies_by_plate", return_value=CD_POLICY_ACTIVE_CLASS1), \
-         patch("handlers.identity.search_policies_by_name",  return_value=[CD_POLICY_ACTIVE_CLASS1]):
+    # v2.0: lookups are done inside handlers.identity
+    with patch("handlers.identity.search_policies_by_cid",  return_value=[CD_POLICY_ACTIVE_CLASS1]) as p_cid, \
+         patch("handlers.identity.search_policies_by_plate", return_value=CD_POLICY_ACTIVE_CLASS1) as p_plate, \
+         patch("handlers.identity.search_policies_by_name",  return_value=[CD_POLICY_ACTIVE_CLASS1]) as p_name:
         yield {
             "by_cid":   p_cid,
             "by_plate": p_plate,

@@ -1,6 +1,11 @@
+"""config.py — Application configuration.
+
+Provides LINE SDK objects and AI model wrappers used by main.py and
+claim_engine.py.  Delegates to the shared Azure OpenAI client in ai/.
+"""
+
 import os
 from dotenv import load_dotenv
-import google.generativeai as genai
 from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import Configuration
 
@@ -9,16 +14,18 @@ load_dotenv()
 
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
-if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, GEMINI_API_KEY]):
-    raise ValueError("กรุณาตั้งค่า Environment Variables ให้ครบถ้วน")
+if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
+    raise ValueError("กรุณาตั้งค่า LINE Environment Variables ให้ครบถ้วน")
 
 # LINE Configuration
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# Gemini Configuration
-genai.configure(api_key=GEMINI_API_KEY)
-# Using gemini-2.5-flash as requested in the latest main.py
-gemini_model = genai.GenerativeModel(model_name='models/gemini-2.5-flash')
+# AI model + genai wrappers — import from the shared ai/ module
+from ai import get_model as _get_model, genai  # noqa: E402
+
+gemini_model = _get_model()
+
+# Backward-compat aliases used by main.py and tests
+GEMINI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")

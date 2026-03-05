@@ -4,7 +4,7 @@
 **Spec Version:** 2.1  
 **BRD Reference:** [business-requirement.md](business-requirement.md) v2.0  
 **User Journey Reference:** [user-journey.md](user-journey.md) v2.0  
-**Last Updated:** February 26, 2026  
+**Last Updated:** March 5, 2026  
 **Authors:** Technical Development Team
 
 ---
@@ -477,9 +477,13 @@ These are the state names that `main.py` currently uses. The v1.0 flow handles C
 
 These states are implemented in the `handlers/` package but **not yet wired into `main.py`**:
 
-`idle` → `detecting_claim_type` → `verifying_policy` → `waiting_for_vehicle_selection` → `waiting_for_counterpart` → `uploading_documents` → `awaiting_ownership` → `ready_to_submit` → `submitted`
+`idle` → `detecting_claim_type` → `verifying_policy` → `waiting_for_vehicle_selection` → `waiting_for_counterpart` → `uploading_damage_photos` → `confirming_claim` → `uploading_identity_docs` → `awaiting_ownership` → `ready_to_submit` → `submitted`
 
-> ⚠️ **Critical for the next developer:** The v1.0 state names and the v2.0 state names are **different**. When wiring v2.0 into `main.py`, the entire state machine must be rewritten using the v2.0 names. Do NOT mix them.
+For **Health (H) claims**, the flow skips the phased upload and uses a single `uploading_documents` state instead:
+
+`idle` → `detecting_claim_type` → `verifying_policy` → `uploading_documents` → `ready_to_submit` → `submitted`
+
+> ⚠️ **Critical for the next developer:** The v1.0 state names and the v2.0 state names are **different**. When wiring v2.0 into `main.py`, the entire state machine must be rewritten using the v2.0 names. Do NOT mix them. CD claims now use a **phased upload flow** with 3 new states (`uploading_damage_photos`, `confirming_claim`, `uploading_identity_docs`) instead of the single `uploading_documents` state.
 
 ### 6.3 Full v2.0 State Diagram (Target)
 
@@ -501,13 +505,19 @@ These states are implemented in the `handlers/` package but **not yet wired into
 [waiting_for_counterpart]                         │                             │
      │ Answered                                   │                             │
      ▼                                            ▼                             │
-[uploading_documents] ◄────────────── [uploading_documents]                    │
+[uploading_damage_photos] ◄── Phase 1    [uploading_documents] (H only)        │
+     │  ≥1 damage photo received                                                │
+     ▼                                                                          │
+[confirming_claim] ◄── Phase 2                                                  │
+     │ Customer taps ยืนยัน                                                      │
+     ▼                                                                          │
+[uploading_identity_docs] ◄── Phase 3                                           │
      │  Driving license (CD with-counterpart)                                   │
      ▼                                                                          │
 [awaiting_ownership]                                                             │
      │ Ownership confirmed                                                       │
      ▼                                                                          │
-[uploading_documents]  ◄── loop until all required docs received                │
+[uploading_identity_docs]  ◄── loop until all identity docs + registration      │
      │ All docs complete                                                         │
      ▼                                                                          │
 [ready_to_submit]                                                               │
@@ -516,13 +526,17 @@ These states are implemented in the `handlers/` package but **not yet wired into
  [submitted] ─────────────────────────────────────────────────────────────────┘
 ```
 
-### 6.4 Required Documents Per Claim Type
+### 6.4 Required Documents Per Claim Type — Phased Upload (CD)
 
-| Claim Type | Sub-type | Required storage keys |
-|---|---|---|
-| CD | มีคู่กรณี | `driving_license_customer`, `driving_license_other_party`, `vehicle_registration`, `vehicle_damage_photo` (≥1) |
-| CD | ไม่มีคู่กรณี | `driving_license_customer`, `vehicle_registration`, `vehicle_damage_photo` (≥1) |
-| H | — | `citizen_id_card`, `medical_certificate`, `itemised_bill`, `receipt` (≥1) |
+For CD claims, documents are uploaded in **three phases**. H claims use a single phase.
+
+| Claim Type | Phase | Sub-type | Required storage keys |
+|---|---|---|---|
+| CD | **Phase 1** (damage photos) | All | `vehicle_damage_photo` (≥1) |
+| CD | **Phase 2** (confirm) | All | Customer taps ยืนยัน — no document upload |
+| CD | **Phase 3** (identity docs) | มีคู่กรณี | `driving_license_customer`, `driving_license_other_party`, `vehicle_registration` |
+| CD | **Phase 3** (identity docs) | ไม่มีคู่กรณี | `driving_license_customer`, `vehicle_registration` |
+| H | Single phase | — | `citizen_id_card`, `medical_certificate`, `itemised_bill`, `receipt` (≥1) |
 
 Optional (accepted but not blocking submission):
 

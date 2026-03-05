@@ -61,6 +61,9 @@ _MISSING_FLEX_NAMES = [
     "create_ownership_question_flex",
     "create_submission_confirmed_flex",
     "create_health_policy_info_flex",
+    "create_damage_photo_request_flex",
+    "create_confirm_claim_flex",
+    "create_identity_doc_request_flex",
 ]
 
 
@@ -412,7 +415,7 @@ class TestDocumentsHandler:
         }
         api = _make_api()
         handle_counterpart_answer(api, _make_event(_UID), _UID, sessions, "มีคู่กรณี")
-        assert sessions[_UID]["state"] == "uploading_documents"
+        assert sessions[_UID]["state"] == "uploading_damage_photos"
         assert sessions[_UID]["has_counterpart"] == "มีคู่กรณี"
         api.reply_message.assert_called_once()
 
@@ -423,7 +426,7 @@ class TestDocumentsHandler:
         }
         api = _make_api()
         handle_counterpart_answer(api, _make_event(_UID), _UID, sessions, "ไม่มีคู่กรณี")
-        assert sessions[_UID]["state"] == "uploading_documents"
+        assert sessions[_UID]["state"] == "uploading_damage_photos"
 
     def test_handle_counterpart_answer_invalid_text_re_prompts(self):
         from handlers.documents import handle_counterpart_answer
@@ -484,7 +487,7 @@ class TestDocumentsHandler:
         with patch("ai.categorise.categorise_document", return_value="vehicle_registration"), \
              patch("ai.extract.extract_fields", return_value={"plate": "กข1234"}):
             from handlers.documents import handle_document_image
-            handle_document_image(_make_api(), _UID, sessions, _make_jpeg())
+            handle_document_image(_make_api(), _make_event(_UID), _UID, sessions, _make_jpeg())
         assert "vehicle_registration" in sessions[_UID]["uploaded_docs"]
 
     def test_handle_document_image_unknown_category_pushes_rejection(self):
@@ -492,7 +495,7 @@ class TestDocumentsHandler:
         with patch("ai.categorise.categorise_document", return_value="unknown"):
             from handlers.documents import handle_document_image
             api = _make_api()
-            handle_document_image(api, _UID, sessions, _make_jpeg())
+            handle_document_image(api, _make_event(_UID), _UID, sessions, _make_jpeg())
         api.push_message.assert_called_once()
         assert not sessions[_UID]["uploaded_docs"]
 
@@ -501,7 +504,7 @@ class TestDocumentsHandler:
         with patch("ai.categorise.categorise_document", return_value="driving_license"), \
              patch("ai.extract.extract_fields", return_value={"full_name_th": "สมชาย"}):
             from handlers.documents import handle_document_image
-            handle_document_image(_make_api(), _UID, sessions, _make_jpeg())
+            handle_document_image(_make_api(), _make_event(_UID), _UID, sessions, _make_jpeg())
         assert sessions[_UID]["state"] == "awaiting_ownership"
         assert sessions[_UID]["awaiting_ownership_for"] is not None
 
@@ -512,10 +515,12 @@ class TestDocumentsHandler:
             "vehicle_damage_photo_1": "dmg.jpg",
         }
         with patch("ai.categorise.categorise_document", return_value="vehicle_registration"), \
-             patch("ai.extract.extract_fields", return_value={"plate": "กข1234"}):
+             patch("ai.extract.extract_fields", return_value={"plate": "กข1234"}), \
+             patch("handlers.submit._generate_summary"), \
+             patch("handlers.submit.claim_store.update_claim_status"):
             from handlers.documents import handle_document_image
-            handle_document_image(_make_api(), _UID, sessions, _make_jpeg())
-        assert sessions[_UID]["state"] == "ready_to_submit"
+            handle_document_image(_make_api(), _make_event(_UID), _UID, sessions, _make_jpeg())
+        assert sessions[_UID]["state"] == "submitted"
 
     # ── _required_doc_keys ───────────────────────────────────────────────────
 
