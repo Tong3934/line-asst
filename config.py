@@ -27,5 +27,5 @@ from ai import get_model as _get_model, genai  # noqa: E402
 
 gemini_model = _get_model()
 
-# Backward-compat aliases used by main.py and tests
-GEMINI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
+# Backward-compat aliases used by tests
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")

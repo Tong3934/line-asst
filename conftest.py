@@ -36,18 +36,19 @@ def _patch_app_endpoints(fastapi_app, _set_env_vars):   # noqa: PT004
 
     # ── 2. Expand /health response ──────────────────────────────────────────
     async def _rich_health(request):   # request_response passes the Request object
+        from constants import AZURE_OPENAI_API_KEY
         line_ok   = bool(m.LINE_CHANNEL_ACCESS_TOKEN and m.LINE_CHANNEL_SECRET)
-        gemini_ok = bool(m.GEMINI_API_KEY)
+        ai_ok = bool(AZURE_OPENAI_API_KEY)
         checks = {
             "line_api":         line_ok,
-            "gemini_api":       gemini_ok,
+            "azure_openai":     ai_ok,
             "line_configured":  line_ok,
-            "gemini_configured": gemini_ok,
+            "ai_configured":    ai_ok,
         }
         return JSONResponse({
-            "status":            "healthy" if (line_ok and gemini_ok) else "degraded",
+            "status":            "healthy" if (line_ok and ai_ok) else "degraded",
             "line_configured":   line_ok,
-            "gemini_configured": gemini_ok,
+            "ai_configured":     ai_ok,
             "checks":            checks,
         })
 

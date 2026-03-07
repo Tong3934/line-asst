@@ -39,7 +39,6 @@ from linebot.v3.webhooks import (
 from config import (
     LINE_CHANNEL_ACCESS_TOKEN,
     LINE_CHANNEL_SECRET,
-    GEMINI_API_KEY,
     configuration,
     handler,
 )
