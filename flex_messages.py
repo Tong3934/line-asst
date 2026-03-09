@@ -562,23 +562,56 @@ def create_analysis_result_flex(
 
     # ถ้ามีเบอร์โทร → เพิ่มปุ่มโทรออก
     if phone_number:
-        footer_contents.append({
-            "type": "button",
-            "style": "primary",
-            "color": button_color,
-            "height": "sm",
-            "action": {
-                "type": "uri",
-                "label": f"📞 โทรแจ้งเหตุ {phone_number}",
-                "uri": f"tel:{phone_number}"
-            }
-        })
+        if len(phone_number) > 4:
+            footer_contents.append({
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": button_color,
+                "cornerRadius": "md",
+                "paddingAll": "8px",
+                "action": {
+                    "type": "uri",
+                    "label": "โทรแจ้งเหตุ",
+                    "uri": f"tel:{phone_number}"
+                },
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "📞 โทรแจ้งเหตุ",
+                        "color": "#FFFFFF",
+                        "align": "center",
+                        "weight": "bold",
+                        "size": "sm"
+                    },
+                    {
+                        "type": "text",
+                        "text": phone_number,
+                        "color": "#FFFFFF",
+                        "align": "center",
+                        "weight": "bold",
+                        "size": "md"
+                    }
+                ]
+            })
+        else:
+            footer_contents.append({
+                "type": "button",
+                "style": "primary",
+                "color": button_color,
+                "height": "sm",
+                "action": {
+                    "type": "uri",
+                    "label": f"📞 โทรแจ้งเหตุ {phone_number}",
+                    "uri": f"tel:{phone_number}"
+                }
+            })
 
     # เพิ่มปุ่ม "เช็ครถคันอื่น"
     footer_contents.append({
         "type": "button",
         "style": "secondary",
         "height": "sm",
+        "margin": "sm",
         "action": {
             "type": "message",
             "label": "🔄 เช็ครถคันอื่น",

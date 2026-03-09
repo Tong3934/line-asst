@@ -119,12 +119,16 @@ def handle_text_message(event):
             # ── Cancel keywords (any active state) ──────────────────────
             if current_state not in (None, "idle") and text.lower() in CANCEL_KEYWORDS:
                 reset_session(user_id)
+                welcome_qr = QuickReply(
+                    items=[QuickReplyItem(action=MessageAction(label="🚀 เช็คสิทธิ์เคลมด่วน", text="เช็คสิทธิ์เคลมด่วน"))]
+                )
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
                         messages=[
                             TextMessage(
-                                text="🔄 ยกเลิกแล้วค่ะ / Session cancelled.\n\nพิมพ์ข้อความใหม่เพื่อเริ่มต้นได้เลยค่ะ",
+                                text="👋 สวัสดีค่ะ!\n\nต้องการตรวจสอบสิทธิ์การเคลมประกัน กดปุ่มด้านล่างได้เลยค่ะ",
+                                quick_reply=welcome_qr,
                             )
                         ],
                     )
