@@ -102,15 +102,15 @@ class TestHealthEndpoint:
         data = resp.json()
         # v1: data["line_configured"], v2: data["checks"]["line_token_set"]
         checks = data.get("checks", data)
-        key = "line_token_set" if "line_token_set" in checks else "line_configured"
+        key = "line_api" if "line_api" in checks else "line_configured"
         assert key in checks
         assert isinstance(checks[key], bool)
 
-    def test_health_gemini_configured_flag(self, app_client):
+    def test_health_ai_configured_flag(self, app_client):
         resp = app_client.get("/health")
         data = resp.json()
         checks = data.get("checks", data)
-        key = "gemini_key_set" if "gemini_key_set" in checks else "gemini_configured"
+        key = "azure_openai" if "azure_openai" in checks else "ai_configured"
         assert key in checks
         assert isinstance(checks[key], bool)
 
@@ -120,10 +120,10 @@ class TestHealthEndpoint:
         data = resp.json()
         checks = data.get("checks", data)
         # Accept either v1 or v2 key names
-        line_flag   = checks.get("line_token_set",   checks.get("line_configured",  False))
-        gemini_flag = checks.get("gemini_key_set",   checks.get("gemini_configured", False))
+        line_flag   = checks.get("line_api", checks.get("line_configured",  False))
+        ai_flag = checks.get("azure_openai", checks.get("ai_configured", False))
         assert line_flag is True
-        assert gemini_flag is True
+        assert ai_flag is True
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -36,7 +36,7 @@ def handle_submit_request(
     from flex_messages import create_submission_confirmed_flex
 
     session = user_sessions[user_id]
-    claim_id = session.get("claim_id", "")
+    claim_id = session.get("claim_id") or ""
 
     # Re-validate completeness
     missing = _missing_docs(session)
@@ -68,10 +68,51 @@ def handle_submit_request(
 
     # Mark submitted
     submitted_at = datetime.now(timezone.utc).isoformat()
+    
+    # BR-10: Hospital Name Consistency Check (Health claims only)
+    flags = []
+    memo_append = ""
+    claim_type = session.get("claim_type", "CD")
+    if claim_type == "H":
+        extracted_data = claim_store.get_extracted_data(claim_id)
+        hospital_names = []
+        
+        # Medical Certificate
+        mc_hosp = extracted_data.get("medical_certificate", {}).get("hospital")
+        if mc_hosp: hospital_names.append(mc_hosp)
+            
+        # Discharge Summary
+        ds_hosp = extracted_data.get("discharge_summary", {}).get("hospital")
+        if ds_hosp: hospital_names.append(ds_hosp)
+            
+        # Receipts
+        for k, v in extracted_data.items():
+            if k.startswith("receipt") and isinstance(v, dict):
+                h = v.get("hospital_name")
+                if h: hospital_names.append(h)
+                    
+        # Normalize and find unique
+        unique_hospitals = set()
+        for h in hospital_names:
+            norm = h.strip().lower()
+            if norm:
+                unique_hospitals.add(norm)
+                
+        if len(unique_hospitals) > 1:
+            flags.append("hospital_name_mismatch")
+            memo_append = "\n⚠️ Hospital name mismatch detected."
+    
+    # Retrieve existing status to append memo if needed
+    existing_status = claim_store.get_claim_status(claim_id)
+    current_memo = existing_status.get("memo", "")
+    new_memo = (current_memo + memo_append).strip() if memo_append else None
+    
     claim_store.update_claim_status(
         claim_id,
         status="Submitted",
         submitted_at=submitted_at,
+        flags=flags if flags else None,
+        memo=new_memo if new_memo is not None else current_memo
     )
 
     # Generate AI summary (async-like — runs in same thread; acceptable for PoC)

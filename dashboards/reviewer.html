@@ -366,6 +366,11 @@
             <td><span class="badge badge-{{ c.claim_type }}">{{ c.claim_type }}</span></td>
             <td>
               <span class="status-badge st-{{ c.status | replace(' ', '-') }}">{{ c.status }}</span>
+              {% if c.flags and 'hospital_name_mismatch' in c.flags %}
+              <br><span
+                style="display:inline-block; margin-top:4px; font-size:0.75rem; color:#742a2a; background:#fed7d7; padding:0.2rem 0.6rem; border-radius:4px; font-weight:600;">⚠️
+                Hospital Mismatch</span>
+              {% endif %}
             </td>
             <td>{{ c.updated_at or c.created_at or '—' }}</td>
             <td>{{ c.documents | length if c.documents else 0 }}</td>

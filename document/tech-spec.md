@@ -1,10 +1,10 @@
 # Technical Specification — LINE Insurance Claim Bot
 ## เช็คสิทธิ์ & เคลมประกันด่วน — v2.0
 
-**Spec Version:** 2.1  
-**BRD Reference:** [business-requirement.md](business-requirement.md) v2.0  
+**Spec Version:** 2.2  
+**BRD Reference:** [business-requirement.md](business-requirement.md) v2.3  
 **User Journey Reference:** [user-journey.md](user-journey.md) v2.0  
-**Last Updated:** March 5, 2026  
+**Last Updated:** March 2026  
 **Authors:** Technical Development Team
 
 ---
@@ -325,6 +325,7 @@ line_user_id: "U..."
 has_counterpart: "มีคู่กรณี"          # CD only; null for H
 status: "Submitted"                   # See lifecycle §5.7
 memo: ""
+flags: []                             # e.g. ["hospital_name_mismatch"]
 created_at: "2026-02-26T12:00:00"
 submitted_at: "2026-02-26T12:05:30"
 documents:
@@ -540,12 +541,25 @@ For CD claims, documents are uploaded in **three phases**. H claims use a single
 
 Optional (accepted but not blocking submission):
 
-| Claim Type | Optional keys |
+| CD | Optional keys |
 |---|---|
 | CD | `vehicle_location_photo` |
 | H | `discharge_summary` |
 
 Defined in `constants.py` as `REQUIRED_DOCS` and `OPTIONAL_DOCS`.
+
+### 6.5 Business Rule Validations
+
+**BR-10: Hospital Name Consistency (Health Claims)**
+- **Where:** Evaluated in `handlers/submit.py` during the completeness check before status transition.
+- **Implementation logic:**
+  1. Retrieve `extracted_data.json` via `get_extracted_data(claim_id)`.
+  2. Extract hospital names: `medical_certificate["hospital"]`, `discharge_summary["hospital"]`, and `hospital_name` from each receipt in the parsed dictionary.
+  3. Filter out `null` or missing values.
+  4. Compare the remaining values (recommend normalising by stripping whitespace and ignoring case).
+  5. If more than one unique hospital name is detected, the claim is flagged.
+- **Storage:** Update `status.yaml` to include "hospital_name_mismatch" in the `flags` array and optionally append a note to the `memo` field.
+- **UI:** The Reviewer dashboard (`reviewer.html`) MUST prominently display this flag if present.
 
 ---
 
@@ -1084,6 +1098,7 @@ The following steps are **still required** to complete the v2.0 migration. Each 
 | **H** | Build missing Flex components: `create_claim_type_selector_flex`, `create_claim_confirmed_flex`, `create_health_policy_info_flex` | ❌ Not done |
 | **I** | Bilingual update — all TextMessage strings and Flex text fields | ❌ Not done |
 | **J** | Wire token tracking into `main.py`/`claim_engine.py` (currently only in `ai/` package) | ❌ Not done |
+| **K** | Implement BR-10 (Hospital Name Consistency Check) in `handlers/submit.py` for Health claims | ❌ Not done |
 
 > **Note on Steps C–E:** The v2.0 handler package (`handlers/trigger.py`, `handlers/identity.py`, `handlers/documents.py`, `handlers/submit.py`) is **fully implemented and tested**. The only remaining work is wiring them into `main.py` by replacing the v1.0 state branches.
 

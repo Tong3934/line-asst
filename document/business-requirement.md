@@ -1,7 +1,7 @@
 # Business Requirement Document (BRD)
 ## LINE Insurance Claims Bot — "เช็คสิทธิ์ & เคลมประกันด่วน"
 
-**Document Version:** 2.2  
+**Document Version:** 2.3  
 **Date:** March 2026  
 **Status:** Draft  
 **Owner:** Product Owner
@@ -16,6 +16,7 @@
 | 2.0 | February 2026 | Merged: document upload, AI data extraction, data storage, claim submission, reviewer & manager dashboards |
 | 2.1 | February 2026 | Updated build status: `handlers/`, `storage/`, `ai/` modules now BUILT; new session states; Draft claim status; health policy lookup; trigger keywords; claim engine separation |
 | 2.2 | March 2026 | Phased CD document upload: damage photos first → confirm claim → driving license + สมุดเล่มทะเบียนรถ → submit; 3 new session states (`uploading_damage_photos`, `confirming_claim`, `uploading_identity_docs`); updated user journey, state machine, screens |
+| 2.3 | March 2026 | Added business rule (BR-10) for checking hospital name consistency across health claim documents |
 
 ---
 
@@ -468,6 +469,10 @@ Folder structure per claim:
 - Every Gemini API call records: timestamp, operation name, model, input tokens, output tokens, cost (USD)
 - Records persisted to `/data/token_records/YYYY-MM.jsonl`
 - Maximum `TOKEN_RECORD_MAX` (10,000) records kept per month
+
+### BR-10: Hospital Name Consistency (Health Claims)
+- The system MUST cross-check the hospital name extracted from all uploaded medical documents (e.g., medical certificate, itemised bill, receipts, discharge summary) for a single health claim.
+- If the hospital names do not match consistently across the documents, the system MUST flag the claim for Reviewer attention.
 
 ---
 

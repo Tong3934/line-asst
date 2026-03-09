@@ -58,6 +58,7 @@ def create_claim(
         "has_counterpart": has_counterpart,
         "status": "Draft",
         "memo": "",
+        "flags": [],
         "created_at": now,
         "submitted_at": None,
         "documents": [],
@@ -87,8 +88,9 @@ def update_claim_status(
     memo: Optional[str] = None,
     paid_amount: Optional[float] = None,
     submitted_at: Optional[str] = None,
+    flags: Optional[List[str]] = None,
 ) -> None:
-    """Update status (and optionally memo / paid_amount) in status.yaml."""
+    """Update status (and optionally memo / paid_amount / flags) in status.yaml."""
     data = get_claim_status(claim_id)
     if not data:
         logger.error("Cannot update status — claim %s not found", claim_id)
@@ -101,6 +103,9 @@ def update_claim_status(
         data.setdefault("metrics", {})["total_paid_amount"] = paid_amount
     if submitted_at is not None:
         data["submitted_at"] = submitted_at
+    if flags is not None:
+        data.setdefault("flags", []).extend(flags)
+        data["flags"] = list(dict.fromkeys(data["flags"]))
 
     _status_path(claim_id).write_text(yaml.dump(data, allow_unicode=True))
     logger.info("Updated claim %s status → %s", claim_id, status)
