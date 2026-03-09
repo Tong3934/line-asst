@@ -1066,14 +1066,14 @@ def create_claim_type_selector_flex() -> FlexContainer:
             "contents": [
                 {
                     "type": "button",
-                    "action": {"type": "message", "label": "🚗 ประกันรถยนต์ (CD)", "text": "CD"},
+                    "action": {"type": "message", "label": "🚗 ประกันรถยนต์", "text": "ประกันรถยนต์"},
                     "style": "primary",
                     "color": "#0066FF",
                     "height": "sm",
                 },
                 {
                     "type": "button",
-                    "action": {"type": "message", "label": "🏥 สุขภาพ (H)", "text": "H"},
+                    "action": {"type": "message", "label": "🏥 สุขภาพ", "text": "สุขภาพ"},
                     "style": "secondary",
                     "margin": "sm",
                     "height": "sm",

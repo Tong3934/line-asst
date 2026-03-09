@@ -9,7 +9,7 @@ Every response ends with the mandatory AI disclaimer (FR-08.4).
 
 import logging
 import io
-from typing import Dict, Optional
+from typing import Dict, Optional, Union, List
 
 from PIL import Image
 
@@ -73,7 +73,7 @@ Customer information:
 {counterpart_note}
 {additional_note}
 
-Analyse the damage photo provided.
+Analyse the damage photo(s) provided.
 
 Reply in BOTH Thai AND English. Structure your reply exactly as follows:
 
@@ -108,7 +108,7 @@ Reply in BOTH Thai AND English. Structure your reply exactly as follows:
 
 
 def analyse_damage(
-    image_bytes: bytes,
+    image_bytes: Union[bytes, List[bytes]],
     policy_info: Dict,
     additional_info: Optional[str] = None,
     has_counterpart: Optional[str] = None,
@@ -116,7 +116,7 @@ def analyse_damage(
     """Run damage analysis + eligibility verdict using Azure OpenAI.
 
     Args:
-        image_bytes:     Raw bytes of the damage photo.
+        image_bytes:     Raw bytes or list of raw bytes of damage photo(s).
         policy_info:     Policy record dict (from mock_data or DB).
         additional_info: Optional free-text incident description from customer.
         has_counterpart: "มีคู่กรณี" | "ไม่มีคู่กรณี" | None
@@ -127,8 +127,13 @@ def analyse_damage(
     prompt = _build_prompt(policy_info, additional_info, has_counterpart)
 
     try:
-        damage_img = Image.open(io.BytesIO(image_bytes))
-        result = call_ai("analyse_damage", prompt, damage_img)
+        if isinstance(image_bytes, list):
+            damage_imgs = [Image.open(io.BytesIO(img_b)) for img_b in image_bytes]
+            result = call_ai("analyse_damage", prompt, images=damage_imgs)
+        else:
+            damage_img = Image.open(io.BytesIO(image_bytes))
+            result = call_ai("analyse_damage", prompt, image=damage_img)
+            
         logger.info("Damage analysis complete")
         return result + _DISCLAIMER
 

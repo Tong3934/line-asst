@@ -166,21 +166,28 @@ def _append_token_record(operation: str, input_tok: int, output_tok: int) -> Non
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def call_ai(operation: str, prompt: str, image: Optional[Image.Image] = None) -> str:
-    """Call Azure OpenAI with a text prompt and optional image.
+def call_ai(operation: str, prompt: str, image: Optional[Image.Image] = None, images: Optional[List[Image.Image]] = None) -> str:
+    """Call Azure OpenAI with a text prompt and optional image(s).
 
     Args:
         operation: human-readable name for the Admin dashboard.
         prompt:    text prompt.
-        image:     optional PIL Image for vision tasks.
+        image:     optional single PIL Image.
+        images:    optional list of PIL Images (for multi-image analysis).
 
     Returns:
         Response text string.
     """
     content: List[Dict] = [{"type": "text", "text": prompt}]
+    
     if image is not None:
         data_uri = _pil_to_base64(image)
         content.append({"type": "image_url", "image_url": {"url": data_uri}})
+        
+    if images is not None:
+        for img in images:
+            data_uri = _pil_to_base64(img)
+            content.append({"type": "image_url", "image_url": {"url": data_uri}})
 
     response = _client.chat.completions.create(
         model=AZURE_OPENAI_DEPLOYMENT,
