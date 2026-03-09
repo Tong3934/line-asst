@@ -312,6 +312,16 @@ def handle_identity_doc_image(
     uploaded = session.setdefault("uploaded_docs", {})
     ext = content_type.split("/")[-1].replace("jpeg", "jpg")
 
+    message = getattr(event, "message", None)
+    image_set = getattr(message, "image_set", None)
+    if image_set and getattr(image_set, "index", 1) > 1:
+        line_bot_api.push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=[TextMessage(text="⏳ กำลังวิเคราะห์เอกสารถัดไป กรุณารอสักครู่...")]
+            )
+        )
+
     # Step 1 — Categorise
     category = categorise_document(image_bytes)
 
@@ -517,6 +527,16 @@ def handle_document_image(
     uploaded = session.setdefault("uploaded_docs", {})
 
     ext = content_type.split("/")[-1].replace("jpeg", "jpg")
+
+    message = getattr(event, "message", None)
+    image_set = getattr(message, "image_set", None)
+    if image_set and getattr(image_set, "index", 1) > 1:
+        line_bot_api.push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=[TextMessage(text="⏳ กำลังวิเคราะห์เอกสารถัดไป กรุณารอสักครู่...")]
+            )
+        )
 
     # Step 1 — Categorise
     category = categorise_document(image_bytes)
