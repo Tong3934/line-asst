@@ -120,23 +120,14 @@ def handle_damage_photo_image(
 
     message = getattr(event, "message", None)
     image_set = getattr(message, "image_set", None)
-    is_subsequent = image_set and getattr(image_set, "index", 1) > 1
+    img_index = getattr(image_set, "index", 1) if image_set else 1
 
-    # ส่ง acknowledge ก่อนเสมอ ให้ลูกค้ารู้ว่าได้รับรูปแล้ว
     line_bot_api.push_message(
         PushMessageRequest(
             to=user_id,
-            messages=[TextMessage(text="✅ ได้รับรูปแล้ว กรุณารอสักครู่...")]
+            messages=[TextMessage(text=f"✅ ได้รับรูปแล้ว กำลังวิเคราะห์ภาพที่ {img_index}")]
         )
     )
-    # รูปถัดจากรูปแรก: แจ้งว่ากำลังวิเคราะห์ต่อ
-    if is_subsequent:
-        line_bot_api.push_message(
-            PushMessageRequest(
-                to=user_id,
-                messages=[TextMessage(text="📊 รับรูปภาพความเสียหาย กำลังวิเคราะห์รูปถัดไป...")]
-            )
-        )
 
     # Step 1 — Categorise
     category = categorise_document(image_bytes)
@@ -336,23 +327,14 @@ def handle_identity_doc_image(
 
     message = getattr(event, "message", None)
     image_set = getattr(message, "image_set", None)
-    is_subsequent = image_set and getattr(image_set, "index", 1) > 1
+    img_index = getattr(image_set, "index", 1) if image_set else 1
 
-    # ส่ง acknowledge ก่อนเสมอ ให้ลูกค้ารู้ว่าได้รับรูปแล้ว
     line_bot_api.push_message(
         PushMessageRequest(
             to=user_id,
-            messages=[TextMessage(text="✅ ได้รับรูปแล้ว กรุณารอสักครู่...")]
+            messages=[TextMessage(text=f"✅ ได้รับรูปแล้ว กำลังวิเคราะห์ภาพที่ {img_index}")]
         )
     )
-    # รูปถัดจากรูปแรก: แจ้งว่ากำลังวิเคราะห์เอกสารถัดไป
-    if is_subsequent:
-        line_bot_api.push_message(
-            PushMessageRequest(
-                to=user_id,
-                messages=[TextMessage(text="⏳ กำลังวิเคราะห์เอกสารถัดไป กรุณารอสักครู่...")]
-            )
-        )
 
     # Step 1 — Categorise
     category = categorise_document(image_bytes)
@@ -562,23 +544,14 @@ def handle_document_image(
 
     message = getattr(event, "message", None)
     image_set = getattr(message, "image_set", None)
-    is_subsequent = image_set and getattr(image_set, "index", 1) > 1
+    img_index = getattr(image_set, "index", 1) if image_set else 1
 
-    # ส่ง acknowledge ก่อนเสมอ ให้ลูกค้ารู้ว่าได้รับรูปแล้ว
     line_bot_api.push_message(
         PushMessageRequest(
             to=user_id,
-            messages=[TextMessage(text="✅ ได้รับรูปแล้ว กรุณารอสักครู่...")]
+            messages=[TextMessage(text=f"✅ ได้รับรูปแล้ว กำลังวิเคราะห์ภาพที่ {img_index}")]
         )
     )
-    # รูปถัดจากรูปแรก: แจ้งว่ากำลังวิเคราะห์เอกสารถัดไป
-    if is_subsequent:
-        line_bot_api.push_message(
-            PushMessageRequest(
-                to=user_id,
-                messages=[TextMessage(text="⏳ กำลังวิเคราะห์เอกสารถัดไป กรุณารอสักครู่...")]
-            )
-        )
 
     # Step 1 — Categorise
     category = categorise_document(image_bytes)
