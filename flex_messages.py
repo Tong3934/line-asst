@@ -1475,6 +1475,61 @@ def create_damage_photo_request_flex() -> FlexContainer:
     return FlexContainer.from_dict(flex_message)
 
 
+def create_start_analysis_prompt_flex(damage_count: int) -> FlexContainer:
+    """Phase 1 prompt — ask customer to start AI analysis after receiving damage photos."""
+    flex_message = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "✅ ได้รับรูปภาพแล้ว", "weight": "bold", "size": "md", "color": "#FFFFFF"}
+            ],
+            "backgroundColor": "#0066FF",
+            "paddingAll": "16px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": f"ได้รับภาพสะสมแล้ว {damage_count} รูป",
+                    "size": "sm",
+                    "color": "#333333",
+                    "weight": "bold",
+                    "wrap": True,
+                },
+                {"type": "separator", "margin": "md"},
+                {
+                    "type": "text",
+                    "text": "สามารถส่งรูปความเสียหายเพิ่มเติมได้เรื่อยๆ เลยนะคะ\nเมื่อส่งรูปครบแล้ว กรุณากดปุ่มด้านล่างเพื่อประเมินความเสียหายค่ะ",
+                    "size": "xs",
+                    "color": "#666666",
+                    "wrap": True,
+                    "margin": "md",
+                },
+            ],
+            "paddingAll": "20px",
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "🔍 เริ่มทำการวิเคราะห์", "text": "เริ่มทำการวิเคราะห์"},
+                    "style": "primary",
+                    "color": "#FF6B00",
+                    "height": "sm",
+                },
+            ],
+            "paddingAll": "15px",
+        },
+    }
+    return FlexContainer.from_dict(flex_message)
+
+
 def create_confirm_claim_flex(damage_count: int) -> FlexContainer:
     """Phase 2 prompt — confirm to start claim process after damage photos received."""
     flex_message = {

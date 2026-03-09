@@ -166,19 +166,11 @@ def handle_damage_photo_image(
 
     # Ask user if they want to send more photos or start analysis
     if category in ("vehicle_damage_photo", "vehicle_location_photo"):
-        qr = QuickReply(items=[
-            QuickReplyItem(action=MessageAction(label="เริ่มทำการวิเคราะห์", text="เริ่มทำการวิเคราะห์")),
-        ])
-        messages.append(
-            TextMessage(
-                text=(
-                    f"ได้รับภาพ ({damage_count}) รูปแล้ว\n"
-                    "สามารถส่งรูปเพิ่มเติมได้เรื่อยๆ ค่ะ\n\n"
-                    "เมื่อส่งรูปรถชนครบแล้ว กรุณากดปุ่ม 'เริ่มทำการวิเคราะห์'"
-                ),
-                quick_reply=qr
-            )
-        )
+        from flex_messages import create_start_analysis_prompt_flex
+        messages.append(FlexMessage(
+            alt_text="ส่งรูปรถชนครบแล้ว เริ่มทำการวิเคราะห์เลยไหม?",
+            contents=create_start_analysis_prompt_flex(damage_count)
+        ))
 
     line_bot_api.push_message(PushMessageRequest(to=user_id, messages=messages))
 
