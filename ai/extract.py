@@ -173,7 +173,7 @@ Return JSON only:
 {{
   "damage_location": "<location on vehicle e.g. ประตูซ้ายหน้า or null>",
   "damage_description": "<description of damage in Thai or null>",
-  "severity": "minor" | "moderate" | "severe" | null
+  "severity": "เล็กน้อย" | "ปานกลาง" | "รุนแรง" | null
 }}
 {_COMMON_RULES}""",
 

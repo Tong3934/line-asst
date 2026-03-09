@@ -1475,41 +1475,78 @@ def create_damage_photo_request_flex() -> FlexContainer:
     return FlexContainer.from_dict(flex_message)
 
 
-def create_start_analysis_prompt_flex(damage_count: int) -> FlexContainer:
-    """Phase 1 prompt — ask customer to start AI analysis after receiving damage photos."""
+def create_damage_photo_received_flex(fields: dict, damage_count: int) -> FlexContainer:
+    """Combined prompt for Phase 1 — acknowledges damage photo, shows extracted fields, and asks to start AI analysis."""
+    
+    # Human-readable labels for extracted field keys
+    field_label_map = {
+        "damage_location": "ตำแหน่งเสียหาย",
+        "damage_description": "ลักษณะ",
+        "severity": "ระดับ",
+        "location_description": "ลักษณะสถานที่",
+        "road_conditions": "สภาพถนน",
+        "weather_conditions": "สภาพอากาศ",
+    }
+
+    # Build extracted-field rows
+    field_rows = []
+    if fields:
+        for key, value in fields.items():
+            if value is None or key in ("gps_lat", "gps_lon"):
+                continue
+            fl = field_label_map.get(key, key)
+            field_rows.append({
+                "type": "box",
+                "layout": "baseline",
+                "contents": [
+                    {"type": "text", "text": fl, "size": "xs", "color": "#999999", "flex": 4},
+                    {"type": "text", "text": str(value), "size": "xs", "color": "#333333", "flex": 6, "wrap": True},
+                ],
+                "margin": "sm",
+            })
+
+    body_contents = []
+    if field_rows:
+        body_contents.append(
+            {"type": "text", "text": "📋 ข้อมูลที่อ่านได้:", "size": "xs", "color": "#666666", "weight": "bold"}
+        )
+        body_contents.extend(field_rows)
+        body_contents.append({"type": "separator", "margin": "lg"})
+        
+    body_contents.extend([
+        {
+            "type": "text",
+            "text": f"ได้รับภาพสะสมแล้ว {damage_count} รูป",
+            "size": "sm",
+            "color": "#333333",
+            "weight": "bold",
+            "wrap": True,
+        },
+        {
+            "type": "text",
+            "text": "สามารถส่งรูปความเสียหายเพิ่มเติมได้เรื่อยๆ เลยนะคะ\nเมื่อส่งรูปครบแล้ว กรุณากดปุ่มด้านล่างเพื่อประเมินความเสียหายค่ะ",
+            "size": "xs",
+            "color": "#666666",
+            "wrap": True,
+            "margin": "md",
+        },
+    ])
+
     flex_message = {
         "type": "bubble",
         "header": {
             "type": "box",
             "layout": "vertical",
             "contents": [
-                {"type": "text", "text": "✅ ได้รับรูปภาพแล้ว", "weight": "bold", "size": "md", "color": "#FFFFFF"}
+                {"type": "text", "text": "✅ รับรูปภาพความเสียหาย", "weight": "bold", "size": "md", "color": "#FFFFFF"}
             ],
-            "backgroundColor": "#0066FF",
+            "backgroundColor": "#FF6B00",
             "paddingAll": "16px",
         },
         "body": {
             "type": "box",
             "layout": "vertical",
-            "contents": [
-                {
-                    "type": "text",
-                    "text": f"ได้รับภาพสะสมแล้ว {damage_count} รูป",
-                    "size": "sm",
-                    "color": "#333333",
-                    "weight": "bold",
-                    "wrap": True,
-                },
-                {"type": "separator", "margin": "md"},
-                {
-                    "type": "text",
-                    "text": "สามารถส่งรูปความเสียหายเพิ่มเติมได้เรื่อยๆ เลยนะคะ\nเมื่อส่งรูปครบแล้ว กรุณากดปุ่มด้านล่างเพื่อประเมินความเสียหายค่ะ",
-                    "size": "xs",
-                    "color": "#666666",
-                    "wrap": True,
-                    "margin": "md",
-                },
-            ],
+            "contents": body_contents,
             "paddingAll": "20px",
         },
         "footer": {
@@ -1520,7 +1557,7 @@ def create_start_analysis_prompt_flex(damage_count: int) -> FlexContainer:
                     "type": "button",
                     "action": {"type": "message", "label": "🔍 เริ่มทำการวิเคราะห์", "text": "เริ่มทำการวิเคราะห์"},
                     "style": "primary",
-                    "color": "#FF6B00",
+                    "color": "#0066FF",
                     "height": "sm",
                 },
             ],

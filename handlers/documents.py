@@ -161,16 +161,13 @@ def handle_damage_photo_image(
     # Step 6 — Show acknowledgement
     damage_count = sum(1 for k in uploaded if k.startswith("vehicle_damage_photo"))
 
-    doc_flex = create_doc_received_flex(storage_key, fields, [])
-    messages = [FlexMessage(alt_text="เอกสารที่ได้รับ / Document received", contents=doc_flex)]
-
-    # Ask user if they want to send more photos or start analysis
     if category in ("vehicle_damage_photo", "vehicle_location_photo"):
-        from flex_messages import create_start_analysis_prompt_flex
-        messages.append(FlexMessage(
-            alt_text="ส่งรูปรถชนครบแล้ว เริ่มทำการวิเคราะห์เลยไหม?",
-            contents=create_start_analysis_prompt_flex(damage_count)
-        ))
+        from flex_messages import create_damage_photo_received_flex
+        doc_flex = create_damage_photo_received_flex(fields, damage_count)
+        messages = [FlexMessage(alt_text=f"รับรูปความเสียหาย ({damage_count}) รูป", contents=doc_flex)]
+    else:
+        doc_flex = create_doc_received_flex(storage_key, fields, [])
+        messages = [FlexMessage(alt_text="เอกสารที่ได้รับ / Document received", contents=doc_flex)]
 
     line_bot_api.push_message(PushMessageRequest(to=user_id, messages=messages))
 
