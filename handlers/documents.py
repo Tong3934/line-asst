@@ -378,10 +378,8 @@ def handle_identity_doc_image(
 
     if not missing:
         line_bot_api.push_message(PushMessageRequest(to=user_id, messages=messages))
-        # Only submit if no more images are currently being processed in this batch
-        if session.get("batch_count", 0) <= 1:
-            from handlers.submit import handle_submit_request
-            handle_submit_request(line_bot_api, event, user_id, user_sessions)
+        from handlers.submit import handle_submit_request
+        handle_submit_request(line_bot_api, event, user_id, user_sessions)
         return
 
     line_bot_api.push_message(PushMessageRequest(to=user_id, messages=messages))
@@ -595,10 +593,8 @@ def handle_document_image(
 
     if not missing:
         line_bot_api.push_message(PushMessageRequest(to=user_id, messages=messages))
-        # Only submit if no more images are currently being processed in this batch
-        if session.get("batch_count", 0) <= 1:
-            from handlers.submit import handle_submit_request
-            handle_submit_request(line_bot_api, event, user_id, user_sessions)
+        from handlers.submit import handle_submit_request
+        handle_submit_request(line_bot_api, event, user_id, user_sessions)
         return
 
     line_bot_api.push_message(PushMessageRequest(to=user_id, messages=messages))
