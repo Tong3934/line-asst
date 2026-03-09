@@ -98,6 +98,7 @@ def handle_counterpart_answer(
 
 def handle_damage_photo_image(
     line_bot_api: MessagingApi,
+    event,
     user_id: str,
     user_sessions: Dict,
     image_bytes: bytes,
@@ -110,11 +111,30 @@ def handle_damage_photo_image(
         create_doc_received_flex,
         create_confirm_claim_flex,
     )
+    from linebot.v3.messaging import PushMessageRequest, TextMessage
 
     session = user_sessions[user_id]
     claim_id = session.get("claim_id")
     uploaded = session.setdefault("uploaded_docs", {})
     ext = content_type.split("/")[-1].replace("jpeg", "jpg")
+
+    message = getattr(event, "message", None)
+    image_set = getattr(message, "image_set", None)
+    
+    if image_set and getattr(image_set, "index", 1) > 1:
+        line_bot_api.push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=[TextMessage(text="⏳ กำลังวิเคราะห์รูปถัดไป กรุณารอสักครู่...")]
+            )
+        )
+    else:
+        line_bot_api.push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=[TextMessage(text="✅ ได้รับรูปแล้ว กรุณารอสักครู่...")]
+            )
+        )
 
     # Step 1 — Categorise
     category = categorise_document(image_bytes)
@@ -319,6 +339,13 @@ def handle_identity_doc_image(
             PushMessageRequest(
                 to=user_id,
                 messages=[TextMessage(text="⏳ กำลังวิเคราะห์เอกสารถัดไป กรุณารอสักครู่...")]
+            )
+        )
+    else:
+        line_bot_api.push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=[TextMessage(text="✅ ได้รับรูปแล้ว กรุณารอสักครู่...")]
             )
         )
 
@@ -535,6 +562,13 @@ def handle_document_image(
             PushMessageRequest(
                 to=user_id,
                 messages=[TextMessage(text="⏳ กำลังวิเคราะห์เอกสารถัดไป กรุณารอสักครู่...")]
+            )
+        )
+    else:
+        line_bot_api.push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=[TextMessage(text="✅ ได้รับรูปแล้ว กรุณารอสักครู่...")]
             )
         )
 

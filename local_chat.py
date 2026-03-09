@@ -325,12 +325,12 @@ def _dispatch_image(user_id: str, image_bytes: bytes, api: _MockLineAPI) -> None
 
     # ── Phase 1: Damage photo upload (CD) ───────────────────────────────────
     if current_state == "uploading_damage_photos":
-        handle_damage_photo_image(api, user_id, user_sessions, image_bytes)
+        handle_damage_photo_image(api, event, user_id, user_sessions, image_bytes)
         return
 
     # ── Phase 2: Confirming claim — accept extra damage photos ──────────────
     if current_state == "confirming_claim":
-        handle_damage_photo_image(api, user_id, user_sessions, image_bytes)
+        handle_damage_photo_image(api, event, user_id, user_sessions, image_bytes)
         return
 
     # ── Phase 3: Identity doc upload (CD) ───────────────────────────────────

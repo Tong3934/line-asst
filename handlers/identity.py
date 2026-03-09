@@ -214,7 +214,6 @@ def _apply_single_policy(
         ])
         messages.append(TextMessage(
             text=(
-                "🚘 พบข้อมูลรถยนต์แล้ว! / Vehicle found!\n\n"
                 "❓ มีคู่กรณีหรือไม่? / Is there a counterpart vehicle?\n"
                 "กรุณาเลือก / Please select:"
             ),

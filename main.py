@@ -325,13 +325,13 @@ def handle_image_message(event):
 
             # ── Phase 1: Damage photo upload (CD) ──────────────────────
             if current_state == "uploading_damage_photos":
-                handle_damage_photo_image(line_bot_api, user_id, user_sessions, image_bytes)
+                handle_damage_photo_image(line_bot_api, event, user_id, user_sessions, image_bytes)
                 return
 
             # ── Phase 2: Confirming claim — accept extra damage photos ──
             if current_state == "confirming_claim":
                 # Allow sending more damage photos even during confirmation
-                handle_damage_photo_image(line_bot_api, user_id, user_sessions, image_bytes)
+                handle_damage_photo_image(line_bot_api, event, user_id, user_sessions, image_bytes)
                 return
 
             # ── Phase 3: Identity doc upload (CD) ──────────────────────
