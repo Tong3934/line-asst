@@ -1508,27 +1508,37 @@ def create_damage_photo_received_flex(fields: dict, damage_count: int) -> FlexCo
     body_contents = []
     if field_rows:
         body_contents.append(
-            {"type": "text", "text": "📋 ข้อมูลที่อ่านได้:", "size": "xs", "color": "#666666", "weight": "bold"}
+            {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {"type": "text", "text": "📋 ข้อมูลเบื้องต้นจากรูปนี้:", "size": "sm", "color": "#111111", "weight": "bold"},
+                    {"type": "separator", "margin": "sm", "color": "#E0E0E0"}
+                ] + field_rows,
+                "backgroundColor": "#F8F9FA",
+                "paddingAll": "12px",
+                "cornerRadius": "8px"
+            }
         )
-        body_contents.extend(field_rows)
         body_contents.append({"type": "separator", "margin": "lg"})
         
     body_contents.extend([
         {
-            "type": "text",
-            "text": f"ได้รับภาพสะสมแล้ว {damage_count} รูป",
-            "size": "sm",
-            "color": "#333333",
-            "weight": "bold",
-            "wrap": True,
+            "type": "box",
+            "layout": "baseline",
+            "contents": [
+                {"type": "text", "text": "📸 ภาพสะสม:", "size": "sm", "color": "#666666", "flex": 4},
+                {"type": "text", "text": f"{damage_count} รูป", "size": "md", "color": "#FF6B00", "weight": "bold", "flex": 6},
+            ],
+            "margin": "sm"
         },
         {
             "type": "text",
-            "text": "สามารถส่งรูปความเสียหายเพิ่มเติมได้เรื่อยๆ เลยนะคะ\nเมื่อส่งรูปครบแล้ว กรุณากดปุ่มด้านล่างเพื่อประเมินความเสียหายค่ะ",
+            "text": "ส่งภาพเพิ่มเติมได้ หรือกดปุ่มด้านล่างเพื่อเริ่มวิเคราะห์ค่ะ",
             "size": "xs",
-            "color": "#666666",
+            "color": "#999999",
             "wrap": True,
-            "margin": "md",
+            "margin": "sm",
         },
     ])
 
