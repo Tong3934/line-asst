@@ -304,6 +304,10 @@ def handle_image_message(event):
 
         try:
             # ดาวน์โหลดรูป
+            current_time = time.time()
+            session["last_image_at"] = current_time
+            session["processing_image_started_at"] = current_time
+            
             message_id = event.message.id
             image_url = f"https://api-data.line.me/v2/bot/message/{message_id}/content"
             headers = {"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"}
@@ -334,15 +338,29 @@ def handle_image_message(event):
                 handle_damage_photo_image(line_bot_api, user_id, user_sessions, image_bytes)
                 return
 
-            # ── Phase 3: Identity doc upload (CD) ──────────────────────
-            if current_state == "uploading_identity_docs":
-                handle_identity_doc_image(line_bot_api, event, user_id, user_sessions, image_bytes)
-                return
+            # ── Document upload logic ───────────────────────────────────
+            session["batch_count"] = session.get("batch_count", 0) + 1
+            
+            try:
+                # ── Phase 3: Identity doc upload (CD) ──────────────────────
+                if current_state == "uploading_identity_docs":
+                    handle_identity_doc_image(line_bot_api, event, user_id, user_sessions, image_bytes)
+                    return
 
-            # ── Document upload — Health claims (single phase) ─────────
-            if current_state in ("uploading_documents", "waiting_for_claim_documents"):
-                handle_document_image(line_bot_api, event, user_id, user_sessions, image_bytes)
-                return
+                # ── Document upload — Health claims (single phase) ─────────
+                if current_state in ("uploading_documents", "waiting_for_claim_documents"):
+                    handle_document_image(line_bot_api, event, user_id, user_sessions, image_bytes)
+                    return
+            finally:
+                session["batch_count"] = max(0, session.get("batch_count", 0) - 1)
+                # Show "Next document" message if more are in flight
+                if session["batch_count"] > 0:
+                     line_bot_api.push_message(
+                        PushMessageRequest(
+                            to=user_id,
+                            messages=[TextMessage(text="🔄 กำลังวิเคราะห์เอกสารถัดไป กรุณารอสักครู่...")]
+                        )
+                    )
 
             # ── Unexpected image ────────────────────────────────────────
             line_bot_api.reply_message(
