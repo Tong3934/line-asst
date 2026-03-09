@@ -175,12 +175,17 @@ def handle_text_message(event):
 
             # ── Phase 1: Damage photos — text reminder (CD) ─────────────
             if current_state == "uploading_damage_photos":
+                if text == "เริ่มทำการวิเคราะห์":
+                    from handlers.documents import handle_start_damage_analysis
+                    handle_start_damage_analysis(line_bot_api, event, user_id, user_sessions)
+                    return
+
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
                         messages=[
                             TextMessage(
-                                text="📸 กรุณาส่งรูปถ่ายความเสียหายของรถค่ะ / Please send car damage photos.\n\nพิมพ์ 'ยกเลิก' เพื่อเริ่มใหม่ / Type 'ยกเลิก' to cancel.",
+                                text="📸 กรุณาส่งรูปถ่ายความเสียหายของรถค่ะ / Please send car damage photos.\n\nพิมพ์ 'เริ่มทำการวิเคราะห์' ถ้ารูปครบแล้ว",
                             )
                         ],
                     )

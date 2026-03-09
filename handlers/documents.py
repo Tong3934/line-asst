@@ -156,27 +156,93 @@ def handle_damage_photo_image(
     uploaded[storage_key] = filename
     session["uploaded_docs"] = uploaded
 
-    # Step 5 — Run damage analysis for vehicle_damage_photo
-    if category == "vehicle_damage_photo":
-        _run_damage_analysis(line_bot_api, user_id, session, image_bytes)
-
+    # Step 5 — (Removed immediate analysis, now waits for user to click Start Analysis)
+    
     # Step 6 — Show acknowledgement
     damage_count = sum(1 for k in uploaded if k.startswith("vehicle_damage_photo"))
 
     doc_flex = create_doc_received_flex(storage_key, fields, [])
     messages = [FlexMessage(alt_text="เอกสารที่ได้รับ / Document received", contents=doc_flex)]
 
-    # When ≥1 damage photo received → show Phase 2 confirmation
-    if damage_count >= 1:
-        session["state"] = "confirming_claim"
-        confirm_flex = create_confirm_claim_flex(damage_count)
-        messages.append(FlexMessage(
-            alt_text="ยืนยันเริ่มเคลม? / Confirm claim?",
-            contents=confirm_flex,
-        ))
+    # Ask user if they want to send more photos or start analysis
+    if category in ("vehicle_damage_photo", "vehicle_location_photo"):
+        qr = QuickReply(items=[
+            QuickReplyItem(action=MessageAction(label="เริ่มทำการวิเคราะห์", text="เริ่มทำการวิเคราะห์")),
+        ])
+        messages.append(
+            TextMessage(
+                text=(
+                    f"ได้รับภาพ ({damage_count}) รูปแล้ว\n"
+                    "สามารถส่งรูปเพิ่มเติมได้เรื่อยๆ ค่ะ\n\n"
+                    "เมื่อส่งรูปรถชนครบแล้ว กรุณากดปุ่ม 'เริ่มทำการวิเคราะห์'"
+                ),
+                quick_reply=qr
+            )
+        )
 
     line_bot_api.push_message(PushMessageRequest(to=user_id, messages=messages))
 
+
+def handle_start_damage_analysis(
+    line_bot_api: MessagingApi,
+    event,
+    user_id: str,
+    user_sessions: Dict,
+) -> None:
+    """Triggered when user clicks 'เริ่มทำการวิเคราะห์'. Runs analysis on all collected photos."""
+    from flex_messages import create_confirm_claim_flex
+    import os
+
+    session = user_sessions[user_id]
+    uploaded = session.get("uploaded_docs", {})
+    claim_id = session.get("claim_id")
+    
+    damage_keys = [k for k in uploaded if k.startswith("vehicle_damage_photo")]
+    
+    if not damage_keys:
+        line_bot_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text="❌ ยังไม่มีรูปความเสียหาย กรุณาส่งรูปเข้ามาก่อนค่ะ")]
+            )
+        )
+        return
+
+    # Read bytes from storage
+    image_bytes_list = []
+    for k in damage_keys:
+        filename = uploaded[k]
+        try:
+            if claim_id:
+                filepath = document_store.get_document_path(claim_id, filename)
+            else:
+                filepath = filename
+            with open(filepath, "rb") as fh:
+                image_bytes_list.append(fh.read())
+        except Exception as e:
+            logger.error("Failed to read image %s: %s", filename, e)
+            
+    if not image_bytes_list:
+        line_bot_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text="❌ ไม่สามารถอ่านไฟล์รูปได้ กรุณาลองส่งใหม่อีกครั้ง")]
+            )
+        )
+        return
+
+    # Run AI on all images
+    _run_damage_analysis(line_bot_api, user_id, session, image_bytes_list)
+    
+    # After analysis is done, transition to Phase 2 confirmation
+    session["state"] = "confirming_claim"
+    confirm_flex = create_confirm_claim_flex(len(damage_keys))
+    line_bot_api.push_message(
+        PushMessageRequest(
+            to=user_id, 
+            messages=[FlexMessage(alt_text="ยืนยันเริ่มเคลม? / Confirm claim?", contents=confirm_flex)]
+        )
+    )
 
 # ── Phase 2: Confirm claim (CD only — text handler) ──────────────────────────
 
