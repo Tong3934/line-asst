@@ -1499,42 +1499,32 @@ def create_damage_photo_received_flex(fields: dict, damage_count: int) -> FlexCo
                 "type": "box",
                 "layout": "baseline",
                 "contents": [
-                    {"type": "text", "text": fl, "size": "xs", "color": "#999999", "flex": 4},
-                    {"type": "text", "text": str(value), "size": "xs", "color": "#333333", "flex": 6, "wrap": True},
+                    {"type": "text", "text": fl, "size": "sm", "color": "#666666", "flex": 4},
+                    {"type": "text", "text": str(value), "size": "sm", "color": "#111111", "flex": 6, "wrap": True, "weight": "bold"},
                 ],
-                "margin": "sm",
+                "margin": "md",
             })
 
     body_contents = []
     if field_rows:
         body_contents.append(
-            {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                    {"type": "text", "text": "📋 ข้อมูลเบื้องต้นจากรูปนี้:", "size": "sm", "color": "#111111", "weight": "bold"},
-                    {"type": "separator", "margin": "sm", "color": "#E0E0E0"}
-                ] + field_rows,
-                "backgroundColor": "#F8F9FA",
-                "paddingAll": "12px",
-                "cornerRadius": "8px"
-            }
+            {"type": "text", "text": "📋 ข้อมูลเบื้องต้นจากรูปนี้", "size": "md", "color": "#111111", "weight": "bold"}
         )
-        body_contents.append({"type": "separator", "margin": "lg"})
+        body_contents.append({"type": "separator", "margin": "md"})
+        body_contents.extend(field_rows)
+        body_contents.append({"type": "separator", "margin": "xl"})
         
     body_contents.extend([
         {
-            "type": "box",
-            "layout": "baseline",
-            "contents": [
-                {"type": "text", "text": "📸 ภาพสะสม:", "size": "sm", "color": "#666666", "flex": 4},
-                {"type": "text", "text": f"{damage_count} รูป", "size": "md", "color": "#FF6B00", "weight": "bold", "flex": 6},
-            ],
-            "margin": "sm"
+            "type": "text",
+            "text": f"📸 มีภาพสะสมทั้งหมด {damage_count} รูป",
+            "size": "sm",
+            "color": "#111111",
+            "weight": "bold",
         },
         {
             "type": "text",
-            "text": "ส่งภาพเพิ่มเติมได้ หรือกดปุ่มด้านล่างเพื่อเริ่มวิเคราะห์ค่ะ",
+            "text": "ส่งภาพเพิ่มได้ หรือกดปุ่มเพื่อเริ่มวิเคราะห์",
             "size": "xs",
             "color": "#999999",
             "wrap": True,
