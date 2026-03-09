@@ -154,11 +154,15 @@ def _dispatch_text(user_id: str, text: str, api: _MockLineAPI) -> None:
         )
         return
 
-    # ── Trigger detection (idle / no state) ─────────────────────────────────
-    if current_state in (None, "idle"):
+    # ── Trigger detection (idle / completed states) ─────────────────────────
+    if current_state in (None, "idle", "submitted", "completed"):
+        if current_state in ("submitted", "completed"):
+            reset_session(user_id)
+        
         if is_trigger(text):
             handle_trigger(api, event, user_id, user_sessions, text)
             return
+        
         # Not a trigger — show menu
         quick_reply = QuickReply(
             items=[QuickReplyItem(action=MessageAction(label="🚀 เช็คสิทธิ์เคลมด่วน", text="เช็คสิทธิ์เคลมด่วน"))]
@@ -270,20 +274,7 @@ def _dispatch_text(user_id: str, text: str, api: _MockLineAPI) -> None:
         )
         return
 
-    # ── Submitted — session done ────────────────────────────────────────────
-    if current_state == "submitted":
-        reset_session(user_id)
-        api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[
-                    TextMessage(
-                        text="🙏 ขอบคุณที่ใช้บริการค่ะ! / Thank you!\n\nพิมพ์ข้อความใหม่เพื่อเริ่มต้นเคลมใหม่ได้เลยค่ะ",
-                    )
-                ],
-            )
-        )
-        return
+
 
     # ── Fallback — show menu ────────────────────────────────────────────────
     quick_reply = QuickReply(
